@@ -73,6 +73,7 @@ def default_settings() -> dict:
         "ssh_connect_timeout": 15,
         "ssh_agent_forwarding": False,
         "ssh_keepalive_interval": 30,   # seconds; 0 disables
+        "ssh_tcp_keepalive": True,      # kernel-level SO_KEEPALIVE on the socket
         "known_hosts_file": "~/.ssh/known_hosts",
     }
 

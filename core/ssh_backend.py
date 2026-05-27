@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 import threading
 from dataclasses import dataclass, field
 from typing import Optional
@@ -37,6 +38,7 @@ class SshCredentials:
     connect_timeout: float = 15.0
     agent_forwarding: bool = False
     keepalive_interval: int = 0   # seconds; 0 disables
+    tcp_keepalive: bool = False   # SO_KEEPALIVE on the underlying socket
     known_hosts_file: Optional[str] = None
     extra_kwargs: dict = field(default_factory=dict)
 
@@ -145,6 +147,27 @@ class ParamikoBackend:
                         transport.set_keepalive(int(self.creds.keepalive_interval))
                 except Exception:
                     log.debug("set_keepalive failed", exc_info=True)
+
+            # Kernel-level TCP keepalive backstops the SSH-layer ping for NAT
+            # boxes that ignore application traffic. Default OS keepalive_time
+            # is 2h on Linux/Windows, so we tune the timers where the platform
+            # exposes them.
+            if self.creds.tcp_keepalive:
+                try:
+                    transport = client.get_transport()
+                    sock = transport.sock if transport is not None else None
+                    if sock is not None:
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                        if hasattr(socket, "TCP_KEEPIDLE"):
+                            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+                        elif hasattr(socket, "TCP_KEEPALIVE"):
+                            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, 60)
+                        if hasattr(socket, "TCP_KEEPINTVL"):
+                            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 30)
+                        if hasattr(socket, "TCP_KEEPCNT"):
+                            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
+                except Exception:
+                    log.debug("SO_KEEPALIVE setup failed", exc_info=True)
 
             rows, cols = self._pending_winsize
             channel = client.invoke_shell(term=self.term, width=cols, height=rows)

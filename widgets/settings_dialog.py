@@ -284,6 +284,12 @@ class SettingsDialog(QDialog):
         self.keepalive_sb.setValue(int(self.settings.get("ssh_keepalive_interval", 30) or 0))
         layout.addRow("Keepalive interval:", self.keepalive_sb)
 
+        self.tcp_keepalive_cb = QCheckBox(
+            "Enable TCP keepalive on the socket (helps NAT/firewall paths stay open)"
+        )
+        self.tcp_keepalive_cb.setChecked(bool(self.settings.get("ssh_tcp_keepalive", True)))
+        layout.addRow(self.tcp_keepalive_cb)
+
         known = self.settings.get("known_hosts_file") or "~/.ssh/known_hosts"
         self.known_hosts_input = QLineEdit(known)
         known_browse = QPushButton("Browse…")
@@ -415,6 +421,7 @@ class SettingsDialog(QDialog):
             "ssh_connect_timeout": self.ssh_timeout_sb.value(),
             "ssh_agent_forwarding": self.agent_fwd_cb.isChecked(),
             "ssh_keepalive_interval": self.keepalive_sb.value(),
+            "ssh_tcp_keepalive": self.tcp_keepalive_cb.isChecked(),
             "known_hosts_file": self.known_hosts_input.text().strip() or "~/.ssh/known_hosts",
 
             "auto_log": self.auto_log_cb.isChecked(),

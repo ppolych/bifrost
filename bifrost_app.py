@@ -613,6 +613,7 @@ class BifrostApp(QMainWindow):
             creds.keepalive_interval = int(self.settings.get("ssh_keepalive_interval", 0) or 0)
         except (TypeError, ValueError):
             creds.keepalive_interval = 0
+        creds.tcp_keepalive = bool(self.settings.get("ssh_tcp_keepalive", True))
 
         # Track whether we should persist after a successful connect.
         save_password = False
