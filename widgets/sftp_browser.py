@@ -36,6 +36,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.icons import named_icon
+
 
 # Extension → freedesktop icon name. QIcon.fromTheme returns null on systems
 # without that icon, and we fall through to the generic file icon below.
@@ -158,6 +160,8 @@ class SftpBrowser(QWidget):
         self._transfer: Optional[_TransferThread] = None
         # Pending uploads chained behind the current transfer (drag-and-drop).
         self._upload_queue: list[tuple[str, str]] = []  # (local, remote)
+        # Hide dotfiles by default; flipped via set_show_hidden() from settings.
+        self.show_hidden: bool = False
 
         # Accept local-file drops anywhere in the browser. dragEnter/drop
         # gating below filters non-file mime types and rejects when no SFTP
@@ -167,15 +171,26 @@ class SftpBrowser(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        # Toolbar
+        # Toolbar — icon-only buttons with tooltips for the labels.
         self.toolbar = QToolBar()
         self.toolbar.setIconSize(QSize(16, 16))
-        self.up_btn = QPushButton("Up")
-        self.refresh_btn = QPushButton("Refresh")
-        self.upload_btn = QPushButton("Upload…")
-        self.download_btn = QPushButton("Download…")
+        self.up_btn = QPushButton(named_icon("arrow_upward.svg"), "")
+        self.up_btn.setToolTip("Up")
+        self.refresh_btn = QPushButton(named_icon("refresh.svg"), "")
+        self.refresh_btn.setToolTip("Refresh")
+        self.upload_btn = QPushButton(named_icon("upload.svg"), "")
+        self.upload_btn.setToolTip("Upload…")
+        self.download_btn = QPushButton(named_icon("download.svg"), "")
+        self.download_btn.setToolTip("Download…")
         for b in [self.up_btn, self.refresh_btn, self.upload_btn, self.download_btn]:
-            b.setStyleSheet("font-size: 10px; padding: 2px;")
+            b.setProperty("compact", True)
+            b.setIconSize(QSize(16, 16))
+            b.setFixedSize(QSize(28, 24))
+            b.setStyleSheet(
+                "QPushButton { background-color: #3c3f41; border: 1px solid #555; }"
+                "QPushButton:hover { background-color: #4b4b4b; }"
+                "QPushButton:disabled { background-color: #2b2b2b; border-color: #444; }"
+            )
             self.toolbar.addWidget(b)
         self.layout.addWidget(self.toolbar)
 
@@ -247,6 +262,15 @@ class SftpBrowser(QWidget):
     def is_attached(self) -> bool:
         return self.sftp is not None
 
+    def set_show_hidden(self, value: bool) -> None:
+        """Toggle dotfile visibility; refresh the listing if we're attached."""
+        value = bool(value)
+        if value == self.show_hidden:
+            return
+        self.show_hidden = value
+        if self.sftp is not None:
+            self._refresh()
+
     # ----- listing / navigation -----
 
     def _set_buttons_enabled(self, enabled: bool) -> None:
@@ -288,6 +312,8 @@ class SftpBrowser(QWidget):
         for attr in sorted(entries, key=sort_key):
             name = attr.filename
             if name in (".", ".."):
+                continue
+            if not self.show_hidden and name.startswith("."):
                 continue
             is_dir = stat.S_ISDIR(attr.st_mode or 0)
             size = "<DIR>" if is_dir else _format_size(attr.st_size or 0)

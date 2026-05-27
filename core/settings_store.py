@@ -33,6 +33,7 @@ def default_settings() -> dict:
         # General
         "show_dashboard": True,
         "auto_sftp": True,
+        "sftp_show_hidden": False,      # show dotfiles in the SFTP browser
         "confirm_close_tab": True,
         "confirm_quit_with_sessions": True,
 

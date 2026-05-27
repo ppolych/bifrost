@@ -1,7 +1,8 @@
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QHeaderView, QMenu, QPushButton, QSplitter, QTabWidget,
-    QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QHBoxLayout, QHeaderView, QInputDialog, QMenu, QMessageBox, QPushButton,
+    QSplitter, QTabWidget, QToolButton, QTreeWidget, QTreeWidgetItem,
+    QVBoxLayout, QWidget,
 )
 from PyQt6.QtGui import QAction
 
@@ -38,6 +39,7 @@ class Sidebar(QWidget):
     favorite_toggled = pyqtSignal(dict, bool)  # session, new state
     forget_credentials = pyqtSignal(dict)      # forget saved password / passphrase
     wake_on_lan = pyqtSignal(dict)             # send a WoL magic packet for this session
+    new_session_requested = pyqtSignal(list)   # parent folder path; opens SessionDialog
     macro_triggered = pyqtSignal(str)
     collapse_requested = pyqtSignal(bool)
     
@@ -234,19 +236,24 @@ class Sidebar(QWidget):
 
     SESSION_ROLE = Qt.ItemDataRole.UserRole
     FOLDER_ROLE = Qt.ItemDataRole.UserRole + 1
+    # Folder items carry the path *to* themselves; session items carry the
+    # path of their containing folder. Both as a list[str] from root.
+    PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 
     def refresh_sessions(self):
         self.tree.clear()
-        self._populate_tree(self.session_manager.sessions, self.tree)
+        self._populate_tree(self.session_manager.sessions, self.tree, [])
         self.tree.expandAll()
 
-    def _populate_tree(self, data, parent):
+    def _populate_tree(self, data, parent, path):
         if isinstance(data, dict):
             for key, value in data.items():
+                item_path = path + [key]
                 item = QTreeWidgetItem(parent, [key])
                 item.setIcon(0, folder_icon(is_open=True))
                 item.setData(0, self.FOLDER_ROLE, True)
-                self._populate_tree(value, item)
+                item.setData(0, self.PATH_ROLE, item_path)
+                self._populate_tree(value, item, item_path)
         elif isinstance(data, list):
             # Favorites still float to the top of each folder even though the
             # star column is gone — that's the main payoff of the favorite flag.
@@ -257,6 +264,7 @@ class Sidebar(QWidget):
                 item = QTreeWidgetItem(parent, [s.get("name", "<unnamed>")])
                 item.setIcon(0, session_icon(s))
                 item.setData(0, self.SESSION_ROLE, s)
+                item.setData(0, self.PATH_ROLE, list(path))
                 # Tooltip carries the full session identity so a narrow sidebar
                 # never hides what you're about to connect to.
                 item.setToolTip(0, _session_tooltip(s))
@@ -281,30 +289,127 @@ class Sidebar(QWidget):
 
     def _show_tree_context_menu(self, pos):
         item = self.tree.itemAt(pos)
-        if item is None:
-            return
-        session = item.data(0, self.SESSION_ROLE)
-        if not session:
-            return
         menu = QMenu(self)
-        is_fav = bool(session.get("favorite"))
-        toggle = QAction("Remove favorite" if is_fav else "Mark as favorite", self)
-        toggle.triggered.connect(lambda: self._toggle_favorite(item))
-        menu.addAction(toggle)
-        connect = QAction("Connect", self)
-        connect.triggered.connect(lambda: self.session_activated.emit(session))
-        menu.addAction(connect)
-        if session.get("type") == "SSH":
+
+        if item is None:
+            act_group = QAction("New top-level group…", self)
+            act_group.triggered.connect(lambda: self._prompt_new_group([]))
+            menu.addAction(act_group)
+        elif item.data(0, self.SESSION_ROLE):
+            session = item.data(0, self.SESSION_ROLE)
+            parent_path = list(item.data(0, self.PATH_ROLE) or [])
+            is_fav = bool(session.get("favorite"))
+            toggle = QAction("Remove favorite" if is_fav else "Mark as favorite", self)
+            toggle.triggered.connect(lambda: self._toggle_favorite(item))
+            menu.addAction(toggle)
+            connect = QAction("Connect", self)
+            connect.triggered.connect(lambda: self.session_activated.emit(session))
+            menu.addAction(connect)
             menu.addSeparator()
-            forget = QAction("Forget saved password / passphrase", self)
-            forget.triggered.connect(lambda: self.forget_credentials.emit(session))
-            menu.addAction(forget)
-            if session.get("mac"):
-                wol = QAction("Wake on LAN", self)
-                wol.setIcon(named_icon("asbru-wol.svg"))
-                wol.triggered.connect(lambda: self.wake_on_lan.emit(session))
-                menu.addAction(wol)
+            rename = QAction("Rename…", self)
+            rename.triggered.connect(lambda: self._prompt_rename_session(parent_path, session))
+            menu.addAction(rename)
+            dup = QAction("Duplicate", self)
+            dup.triggered.connect(lambda: self._duplicate_session(parent_path, session))
+            menu.addAction(dup)
+            if session.get("type") == "SSH":
+                menu.addSeparator()
+                forget = QAction("Forget saved password / passphrase", self)
+                forget.triggered.connect(lambda: self.forget_credentials.emit(session))
+                menu.addAction(forget)
+                if session.get("mac"):
+                    wol = QAction("Wake on LAN", self)
+                    wol.setIcon(named_icon("asbru-wol.svg"))
+                    wol.triggered.connect(lambda: self.wake_on_lan.emit(session))
+                    menu.addAction(wol)
+        elif item.data(0, self.FOLDER_ROLE):
+            folder_path = list(item.data(0, self.PATH_ROLE) or [])
+            new_sess = QAction("New session in this group…", self)
+            new_sess.triggered.connect(lambda: self.new_session_requested.emit(folder_path))
+            menu.addAction(new_sess)
+            new_sub = QAction("New sub-group…", self)
+            new_sub.triggered.connect(lambda: self._prompt_new_group(folder_path))
+            menu.addAction(new_sub)
+            menu.addSeparator()
+            rename = QAction("Rename group…", self)
+            rename.triggered.connect(lambda: self._prompt_rename_folder(folder_path))
+            menu.addAction(rename)
+            dup = QAction("Duplicate group", self)
+            dup.triggered.connect(lambda: self._duplicate_folder(folder_path))
+            menu.addAction(dup)
+        else:
+            return
+
         menu.exec(self.tree.mapToGlobal(pos))
+
+    # ----- group / session mutation helpers -----
+
+    def _prompt_new_group(self, parent_path):
+        name, ok = QInputDialog.getText(self, "New group", "Group name:")
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            return
+        try:
+            added = self.session_manager.add_subgroup(parent_path, name)
+        except ValueError as e:
+            QMessageBox.information(self, "Can't add sub-group", str(e))
+            return
+        if added is None:
+            QMessageBox.warning(self, "Couldn't add group", "Parent group not found.")
+            return
+        self.refresh_sessions()
+
+    def _prompt_rename_folder(self, folder_path):
+        if not folder_path:
+            return
+        current = folder_path[-1]
+        new, ok = QInputDialog.getText(self, "Rename group", "Group name:", text=current)
+        if not ok:
+            return
+        new = new.strip()
+        if not new or new == current:
+            return
+        try:
+            ok2 = self.session_manager.rename_folder(folder_path, new)
+        except ValueError as e:
+            QMessageBox.warning(self, "Can't rename", str(e))
+            return
+        if ok2:
+            self.refresh_sessions()
+
+    def _duplicate_folder(self, folder_path):
+        if not folder_path:
+            return
+        try:
+            new_name = self.session_manager.duplicate_folder(folder_path)
+        except ValueError as e:
+            QMessageBox.warning(self, "Can't duplicate", str(e))
+            return
+        if new_name:
+            self.refresh_sessions()
+
+    def _prompt_rename_session(self, parent_path, session):
+        current = session.get("name", "")
+        new, ok = QInputDialog.getText(self, "Rename session", "Session name:", text=current)
+        if not ok:
+            return
+        new = new.strip()
+        if not new or new == current:
+            return
+        try:
+            ok2 = self.session_manager.rename_session(parent_path, session, new)
+        except ValueError as e:
+            QMessageBox.warning(self, "Can't rename", str(e))
+            return
+        if ok2:
+            self.refresh_sessions()
+
+    def _duplicate_session(self, parent_path, session):
+        new = self.session_manager.duplicate_session(parent_path, session)
+        if new:
+            self.refresh_sessions()
 
     def _toggle_favorite(self, item):
         session = item.data(0, self.SESSION_ROLE)

@@ -83,6 +83,10 @@ class SettingsDialog(QDialog):
         self.auto_sftp_cb.setChecked(self.settings.get("auto_sftp", True))
         layout.addRow(self.auto_sftp_cb)
 
+        self.sftp_show_hidden_cb = QCheckBox("Show hidden files and folders in the SFTP browser")
+        self.sftp_show_hidden_cb.setChecked(self.settings.get("sftp_show_hidden", False))
+        layout.addRow(self.sftp_show_hidden_cb)
+
         self.confirm_close_tab_cb = QCheckBox("Confirm before closing a tab with an active session")
         self.confirm_close_tab_cb.setChecked(self.settings.get("confirm_close_tab", True))
         layout.addRow(self.confirm_close_tab_cb)
@@ -394,6 +398,7 @@ class SettingsDialog(QDialog):
         out.update({
             "show_dashboard": self.show_dashboard_cb.isChecked(),
             "auto_sftp": self.auto_sftp_cb.isChecked(),
+            "sftp_show_hidden": self.sftp_show_hidden_cb.isChecked(),
             "confirm_close_tab": self.confirm_close_tab_cb.isChecked(),
             "confirm_quit_with_sessions": self.confirm_quit_cb.isChecked(),
 

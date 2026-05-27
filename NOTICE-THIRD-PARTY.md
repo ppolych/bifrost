@@ -20,6 +20,7 @@ license file at the top of its repository.
 
 ```
 res/icons/material/
+├── arrow_upward.svg               (SFTP: go to parent directory)
 ├── bolt.svg                       (quick connect)
 ├── cable.svg                      (Telnet method)
 ├── cloud_upload.svg               (FTP method)
@@ -32,6 +33,7 @@ res/icons/material/
 ├── hub.svg                        (application logo)
 ├── link.svg                       (generic session)
 ├── power_settings_new.svg         (Wake on LAN)
+├── refresh.svg                    (SFTP: reload directory listing)
 ├── screen_share.svg               (VNC method)
 ├── settings.svg                   (preferences)
 ├── signal_cellular_4_bar.svg      (Mosh method)

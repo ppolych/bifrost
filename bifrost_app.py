@@ -78,6 +78,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.favorite_toggled.connect(self.on_favorite_toggled)
         self.sidebar.forget_credentials.connect(self.on_forget_credentials)
         self.sidebar.wake_on_lan.connect(self.on_wake_on_lan)
+        self.sidebar.new_session_requested.connect(self.open_session_dialog)
         self.sidebar.add_btn.clicked.connect(self.open_session_dialog)
         self.sidebar.export_btn.clicked.connect(self.export_sessions)
         self.sidebar.import_btn.clicked.connect(self.import_sessions)
@@ -88,6 +89,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.cred_widget.refresh_requested.connect(self._refresh_credentials_view)
         self.sidebar.cred_widget.forget_requested.connect(self.on_forget_credentials)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
+        self.sidebar.sftp_widget.set_show_hidden(self.settings.get("sftp_show_hidden", False))
         self.sidebar.tool_triggered.connect(self.on_tool_triggered)
         self.sidebar.macro_triggered.connect(self.run_macro)
         self.sidebar.record_btn.clicked.connect(self.toggle_macro_recording)
@@ -264,6 +266,7 @@ class BifrostApp(QMainWindow):
             self.settings = dialog.get_settings()
             save_settings(self.settings)
             self.apply_global_visuals()
+            self.sidebar.sftp_widget.set_show_hidden(self.settings.get("sftp_show_hidden", False))
             for i in range(self.tabs.count()):
                 container = self.tabs.widget(i)
                 if isinstance(container, TerminalContainer):
@@ -760,11 +763,24 @@ class BifrostApp(QMainWindow):
             4000,
         )
 
-    def open_session_dialog(self):
+    def open_session_dialog(self, parent_path=None):
+        # `parent_path` may arrive as False (Qt's default clicked-signal arg)
+        # or as a list (the sidebar's new_session_requested signal). Normalize.
+        if not isinstance(parent_path, list):
+            parent_path = None
         dialog = SessionDialog(self)
         if dialog.exec():
             data = dialog.get_data()
-            self.session_manager.add_session("User sessions", data)
+            try:
+                if parent_path is None:
+                    self.session_manager.add_session("User sessions", data)
+                else:
+                    added = self.session_manager.add_session_at(parent_path, data)
+                    if added is not None and added != data.get("name"):
+                        data["name"] = added
+            except ValueError as e:
+                QMessageBox.warning(self, "Can't add session", str(e))
+                return
             self.sidebar.refresh_sessions()
             self._refresh_credentials_view()
             if data["type"] == "WSL":
