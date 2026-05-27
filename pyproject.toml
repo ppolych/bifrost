@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bifrost-cm"
+version = "0.1.0"
+description = "Bifrost Connection Manager — cross-platform terminal and connection manager (MobaXterm-style) built with PyQt6"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0-or-later"}
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
+dependencies = [
+    "PyQt6>=6.6",
+    "psutil>=5.9",
+    "pyte>=0.8.2",
+    "paramiko>=3.4",
+    "keyring>=24.0",
+    "pywinpty>=2.0; sys_platform == 'win32'",
+]
+
+[project.scripts]
+bifrost-cm = "bifrost_app:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+]
+
+[tool.setuptools]
+py-modules = ["bifrost_app"]
+
+[tool.setuptools.packages.find]
+include = ["core*", "widgets*"]

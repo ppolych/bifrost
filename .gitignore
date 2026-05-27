@@ -1,0 +1,15 @@
+# Local Claude Code state — not shared
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Runtime artifacts
+logs/
+*.log
