@@ -141,17 +141,113 @@ class _TransferThread(QThread):
     def run(self):
         try:
             if self.mode == "upload":
-                self.sftp.put(self.local_path, self.remote_path, callback=self._callback)
-                self.finished_ok.emit(f"Uploaded {os.path.basename(self.local_path)}")
+                if os.path.isdir(self.local_path):
+                    total = self._local_size(self.local_path)
+                    done = 0
+                    self._emit_progress(0, total)
+                    done = self._upload_dir(self.local_path, self.remote_path, done, total)
+                    self._emit_progress(done, total)
+                    self.finished_ok.emit(f"Uploaded folder {os.path.basename(self.local_path)}")
+                else:
+                    self.sftp.put(self.local_path, self.remote_path, callback=self._callback)
+                    self.finished_ok.emit(f"Uploaded {os.path.basename(self.local_path)}")
             else:
-                self.sftp.get(self.remote_path, self.local_path, callback=self._callback)
-                self.finished_ok.emit(f"Downloaded {posixpath.basename(self.remote_path)}")
+                if self._remote_is_dir(self.remote_path):
+                    total = self._remote_size(self.remote_path)
+                    done = 0
+                    self._emit_progress(0, total)
+                    done = self._download_dir(self.remote_path, self.local_path, done, total)
+                    self._emit_progress(done, total)
+                    self.finished_ok.emit(f"Downloaded folder {posixpath.basename(self.remote_path)}")
+                else:
+                    self.sftp.get(self.remote_path, self.local_path, callback=self._callback)
+                    self.finished_ok.emit(f"Downloaded {posixpath.basename(self.remote_path)}")
         except (OSError, paramiko.SSHException) as e:
             log.exception("SFTP transfer failed")
             self.failed.emit(str(e))
 
     def _callback(self, done: int, total: int):
         self.progress.emit(done, total)
+
+    def _emit_progress(self, done: int, total: int) -> None:
+        self.progress.emit(done, total)
+
+    def _mkdir_if_missing(self, remote_path: str) -> None:
+        try:
+            self.sftp.mkdir(remote_path)
+        except OSError:
+            # Existing directories are fine; put/get will report real failures.
+            pass
+
+    def _local_size(self, local_path: str) -> int:
+        if os.path.isfile(local_path):
+            return os.path.getsize(local_path)
+        total = 0
+        for root, _dirs, files in os.walk(local_path):
+            for name in files:
+                path = os.path.join(root, name)
+                try:
+                    total += os.path.getsize(path)
+                except OSError:
+                    log.debug("could not stat %s", path, exc_info=True)
+        return total
+
+    def _remote_is_dir(self, remote_path: str) -> bool:
+        attr = self.sftp.stat(remote_path)
+        return stat.S_ISDIR(attr.st_mode or 0)
+
+    def _remote_size(self, remote_path: str) -> int:
+        attr = self.sftp.stat(remote_path)
+        if not stat.S_ISDIR(attr.st_mode or 0):
+            return attr.st_size or 0
+        total = 0
+        for child in self.sftp.listdir_attr(remote_path):
+            if child.filename in (".", ".."):
+                continue
+            child_path = posixpath.join(remote_path, child.filename)
+            if stat.S_ISDIR(child.st_mode or 0):
+                total += self._remote_size(child_path)
+            else:
+                total += child.st_size or 0
+        return total
+
+    def _upload_dir(self, local_dir: str, remote_dir: str, done: int, total: int) -> int:
+        self._mkdir_if_missing(remote_dir)
+        for name in sorted(os.listdir(local_dir)):
+            local_child = os.path.join(local_dir, name)
+            remote_child = posixpath.join(remote_dir, name)
+            if os.path.isdir(local_child):
+                done = self._upload_dir(local_child, remote_child, done, total)
+            elif os.path.isfile(local_child):
+                base = done
+
+                def callback(sent: int, _file_total: int, base=base):
+                    self._emit_progress(base + sent, total)
+
+                self.sftp.put(local_child, remote_child, callback=callback)
+                done += os.path.getsize(local_child)
+                self._emit_progress(done, total)
+        return done
+
+    def _download_dir(self, remote_dir: str, local_dir: str, done: int, total: int) -> int:
+        os.makedirs(local_dir, exist_ok=True)
+        for child in sorted(self.sftp.listdir_attr(remote_dir), key=lambda a: a.filename.lower()):
+            if child.filename in (".", ".."):
+                continue
+            remote_child = posixpath.join(remote_dir, child.filename)
+            local_child = os.path.join(local_dir, child.filename)
+            if stat.S_ISDIR(child.st_mode or 0):
+                done = self._download_dir(remote_child, local_child, done, total)
+            else:
+                base = done
+
+                def callback(received: int, _file_total: int, base=base):
+                    self._emit_progress(base + received, total)
+
+                self.sftp.get(remote_child, local_child, callback=callback)
+                done += child.st_size or 0
+                self._emit_progress(done, total)
+        return done
 
 
 class SftpBrowser(QWidget):
@@ -414,9 +510,9 @@ class SftpBrowser(QWidget):
             custom_act.triggered.connect(lambda: self._prompt_open_with(remote))
             default_act = menu.addAction("Open with system default")
             default_act.triggered.connect(lambda: self.file_system_open_requested.emit(remote))
-            menu.addSeparator()
-            download_act = menu.addAction(named_icon("download.svg"), "Download")
-            download_act.triggered.connect(lambda: self._download_remote(remote))
+        menu.addSeparator()
+        download_act = menu.addAction(named_icon("download.svg"), "Download")
+        download_act.triggered.connect(lambda: self._download_remote(remote, is_dir))
 
         menu.addSeparator()
         rename_act = menu.addAction(named_icon("edit.svg"), "Rename")
@@ -452,12 +548,17 @@ class SftpBrowser(QWidget):
         if ok and command:
             self.file_open_with_requested.emit(remote, command)
 
-    def _download_remote(self, remote: str) -> None:
+    def _download_remote(self, remote: str, is_dir: bool = False) -> None:
         if self.sftp is None or self._transfer is not None:
             return
-        local, _ = QFileDialog.getSaveFileName(self, "Save as", posixpath.basename(remote))
-        if local:
-            self._start_transfer("download", local, remote)
+        if is_dir:
+            parent = QFileDialog.getExistingDirectory(self, "Download folder to", "")
+            if parent:
+                self._start_transfer("download", os.path.join(parent, posixpath.basename(remote)), remote)
+        else:
+            local, _ = QFileDialog.getSaveFileName(self, "Save as", posixpath.basename(remote))
+            if local:
+                self._start_transfer("download", local, remote)
 
     def _rename_remote(self, remote: str) -> None:
         if self.sftp is None:
@@ -686,23 +787,13 @@ class SftpBrowser(QWidget):
 
         target_dir = self._target_dir_for_drop(event.position().toPoint())
 
-        # Split into files we'll upload and directories we'll skip with a notice
-        # (recursive upload isn't implemented yet).
-        files: list[str] = []
-        skipped_dirs: list[str] = []
+        # Queue both files and folders; folders upload recursively.
+        upload_items: list[str] = []
         for p in paths:
-            if os.path.isdir(p):
-                skipped_dirs.append(p)
-            elif os.path.isfile(p):
-                files.append(p)
+            if os.path.isdir(p) or os.path.isfile(p):
+                upload_items.append(p)
 
-        if skipped_dirs:
-            self.path_label.setText(
-                f"{self.cwd}   ·   skipped {len(skipped_dirs)} director"
-                f"{'ies' if len(skipped_dirs) != 1 else 'y'} (only files supported)"
-            )
-
-        if not files:
+        if not upload_items:
             event.acceptProposedAction()
             return
 
@@ -710,7 +801,7 @@ class SftpBrowser(QWidget):
         # immediately; the rest chain via _cleanup_transfer.
         new_queue = [
             (local, posixpath.join(target_dir, os.path.basename(local)))
-            for local in files
+            for local in upload_items
         ]
         if self._transfer is not None:
             self._upload_queue.extend(new_queue)

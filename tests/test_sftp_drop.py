@@ -106,7 +106,7 @@ def test_drop_starts_first_and_queues_rest_when_idle(browser, tmp_path, monkeypa
     assert len(browser._upload_queue) == 2  # b and c remain queued
 
 
-def test_drop_skips_directories(browser, tmp_path, monkeypatch):
+def test_drop_queues_directories_recursively(browser, tmp_path, monkeypatch):
     browser.sftp = MagicMock()
     browser._transfer = None
     started: list[tuple[str, str, str]] = []
@@ -122,9 +122,9 @@ def test_drop_skips_directories(browser, tmp_path, monkeypatch):
     browser.dropEvent(_make_drop_event([str(sub), str(f)]))
 
     assert len(started) == 1
-    assert started[0][1] == str(f)
-    # Status message tells the user about skipped dirs.
-    assert "skipped" in browser.path_label.text().lower()
+    assert started[0][1] == str(sub)
+    assert started[0][2] == "/home/user/sub"
+    assert browser._upload_queue == [(str(f), "/home/user/x.txt")]
 
 
 def test_drop_ignored_when_no_sftp(browser, tmp_path, monkeypatch):
@@ -245,6 +245,59 @@ def test_edit_permissions_applies_octal_mode(browser, monkeypatch):
     browser._edit_permissions("/home/user/README", browser._file_item)
 
     browser.sftp.chmod.assert_called_once_with("/home/user/README", 0o600)
+
+
+def test_transfer_thread_uploads_local_directory_recursively(qapp, tmp_path):
+    from widgets.sftp_browser import _TransferThread
+
+    root = tmp_path / "bundle"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    (root / "a.txt").write_text("a")
+    (nested / "b.txt").write_text("bb")
+
+    class FakeSftp:
+        def __init__(self):
+            self.mkdirs = []
+            self.puts = []
+
+        def mkdir(self, remote):
+            self.mkdirs.append(remote)
+
+        def put(self, local, remote, callback=None):
+            self.puts.append((os.path.basename(local), remote))
+            if callback:
+                size = os.path.getsize(local)
+                callback(size, size)
+
+    fake = FakeSftp()
+    thread = _TransferThread(fake, "upload", str(root), "/remote/bundle")
+    total = thread._local_size(str(root))
+    done = thread._upload_dir(str(root), "/remote/bundle", 0, total)
+
+    assert done == 3
+    assert fake.mkdirs == ["/remote/bundle", "/remote/bundle/nested"]
+    assert fake.puts == [
+        ("a.txt", "/remote/bundle/a.txt"),
+        ("b.txt", "/remote/bundle/nested/b.txt"),
+    ]
+
+
+def test_download_remote_folder_uses_directory_picker(browser, monkeypatch):
+    from PyQt6.QtWidgets import QFileDialog
+
+    browser.sftp = MagicMock()
+    started = []
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: "C:/Downloads")
+    monkeypatch.setattr(
+        browser,
+        "_start_transfer",
+        lambda mode, local, remote: started.append((mode, local, remote)),
+    )
+
+    browser._download_remote("/home/user/src", is_dir=True)
+
+    assert started == [("download", os.path.join("C:/Downloads", "src"), "/home/user/src")]
 
 
 # ---------------------------------------------------------------------------
