@@ -231,10 +231,20 @@ def test_delete_remote_file_uses_remove(browser, monkeypatch):
     browser.sftp.rmdir.assert_not_called()
 
 
-def test_delete_remote_folder_uses_rmdir(browser, monkeypatch):
+def test_delete_remote_folder_recursively_removes_contents(browser, monkeypatch):
     from PyQt6.QtWidgets import QMessageBox
 
     browser.sftp = MagicMock()
+    attr = lambda name, mode: type("Attr", (), {"filename": name, "st_mode": mode})()
+    browser.sftp.listdir_attr.side_effect = lambda path: {
+        "/home/user/src": [
+            attr("README.md", 0o100644),
+            attr("nested", 0o040755),
+        ],
+        "/home/user/src/nested": [
+            attr("child.txt", 0o100644),
+        ],
+    }[path]
     monkeypatch.setattr(
         QMessageBox,
         "question",
@@ -244,8 +254,14 @@ def test_delete_remote_folder_uses_rmdir(browser, monkeypatch):
 
     browser._delete_remote("/home/user/src", is_dir=True)
 
-    browser.sftp.rmdir.assert_called_once_with("/home/user/src")
-    browser.sftp.remove.assert_not_called()
+    assert browser.sftp.remove.call_args_list == [
+        (("/home/user/src/README.md",),),
+        (("/home/user/src/nested/child.txt",),),
+    ]
+    assert browser.sftp.rmdir.call_args_list == [
+        (("/home/user/src/nested",),),
+        (("/home/user/src",),),
+    ]
 
 
 def test_edit_permissions_applies_octal_mode(browser, monkeypatch):

@@ -582,10 +582,11 @@ class SftpBrowser(QWidget):
         if self.sftp is None:
             return
         name = posixpath.basename(remote)
+        detail = " and everything inside it" if is_dir else ""
         reply = QMessageBox.question(
             self,
             "Delete remote item",
-            f"Delete '{name}'?",
+            f"Delete '{name}'{detail}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -593,13 +594,26 @@ class SftpBrowser(QWidget):
             return
         try:
             if is_dir:
-                self.sftp.rmdir(remote)
+                self._delete_remote_dir(remote)
             else:
                 self.sftp.remove(remote)
         except (OSError, paramiko.SSHException) as e:
             QMessageBox.warning(self, "Delete failed", str(e))
             return
         self._refresh()
+
+    def _delete_remote_dir(self, remote_dir: str) -> None:
+        if self.sftp is None:
+            return
+        for child in self.sftp.listdir_attr(remote_dir):
+            if child.filename in (".", ".."):
+                continue
+            child_path = posixpath.join(remote_dir, child.filename)
+            if stat.S_ISDIR(child.st_mode or 0):
+                self._delete_remote_dir(child_path)
+            else:
+                self.sftp.remove(child_path)
+        self.sftp.rmdir(remote_dir)
 
     def _show_properties(self, remote: str, item: QTreeWidgetItem) -> None:
         meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
