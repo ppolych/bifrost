@@ -11,8 +11,8 @@ import sys
 import psutil
 import paramiko
 import pyte
-from PyQt6.QtCore import QT_VERSION_STR, Qt, QTimer
-from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
+from PyQt6.QtCore import QT_VERSION_STR, Qt, QTimer, QUrl
+from PyQt6.QtGui import QAction, QDesktopServices, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QColorDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
     QMainWindow, QMenu, QMessageBox, QSplitter, QStatusBar, QTabBar, QTabWidget,
@@ -103,6 +103,10 @@ class BifrostApp(QMainWindow):
         self.sidebar.cred_widget.refresh_requested.connect(self._refresh_credentials_view)
         self.sidebar.cred_widget.forget_requested.connect(self.on_forget_credentials)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
+        self.sidebar.sftp_widget.file_text_editor_requested.connect(self.open_file_in_text_editor)
+        self.sidebar.sftp_widget.file_open_with_requested.connect(self.open_file_with_command)
+        self.sidebar.sftp_widget.file_system_open_requested.connect(self.open_file_with_system_default)
+        self.sidebar.sftp_widget.path_to_terminal_requested.connect(self.send_remote_path_to_terminal)
         self.sidebar.sftp_widget.set_show_hidden(self.settings.get("sftp_show_hidden", False))
         self.sidebar.tool_triggered.connect(self.on_tool_triggered)
         self.sidebar.macro_triggered.connect(self.run_macro)
@@ -513,6 +517,89 @@ class BifrostApp(QMainWindow):
             )
         self.tabs.addTab(editor, f"📝 {os.path.basename(remote_path) or 'Editor'}")
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
+
+    def _download_remote_temp(self, remote_path: str) -> str | None:
+        import tempfile
+
+        sftp = self.sidebar.sftp_widget.sftp
+        if sftp is None:
+            return None
+        fd, local_path = tempfile.mkstemp(
+            prefix="bifrost-",
+            suffix="-" + (os.path.basename(remote_path) or "file"),
+        )
+        os.close(fd)
+        try:
+            sftp.get(remote_path, local_path)
+        except Exception:
+            try:
+                os.unlink(local_path)
+            except OSError:
+                pass
+            raise
+        return local_path
+
+    def _open_local_with_command(self, local_path: str, command: str, label: str) -> bool:
+        import shlex
+
+        argv = shlex.split(command) + [local_path]
+        try:
+            subprocess.Popen(argv)
+        except OSError as e:
+            log.warning("Failed to launch %s %r: %s", label, argv, e)
+            return False
+        self.status_bar.showMessage(f"Opened {os.path.basename(local_path)} with {label}", 4000)
+        return True
+
+    def open_file_in_text_editor(self, remote_path: str):
+        try:
+            local_path = self._download_remote_temp(remote_path)
+        except Exception as e:
+            log.exception("Failed to fetch remote file %s", remote_path)
+            QMessageBox.warning(self, "Open in text editor failed", str(e))
+            return
+
+        command = (self.settings.get("default_text_editor_command") or "").strip()
+        if command and local_path and self._open_local_with_command(local_path, command, "text editor"):
+            return
+
+        editor = MobaEditor()
+        if local_path:
+            editor.open_path(local_path)
+        else:
+            editor.set_content(f"# {remote_path}\n")
+        self.tabs.addTab(editor, f"Editor: {os.path.basename(remote_path) or 'remote file'}")
+        self.tabs.setCurrentIndex(self.tabs.count() - 1)
+
+    def open_file_with_command(self, remote_path: str, command: str):
+        try:
+            local_path = self._download_remote_temp(remote_path)
+        except Exception as e:
+            log.exception("Failed to fetch remote file %s", remote_path)
+            QMessageBox.warning(self, "Open with command failed", str(e))
+            return
+        if local_path:
+            self._open_local_with_command(local_path, command, "custom command")
+
+    def open_file_with_system_default(self, remote_path: str):
+        try:
+            local_path = self._download_remote_temp(remote_path)
+        except Exception as e:
+            log.exception("Failed to fetch remote file %s", remote_path)
+            QMessageBox.warning(self, "Open with system default failed", str(e))
+            return
+        if local_path and QDesktopServices.openUrl(QUrl.fromLocalFile(local_path)):
+            self.status_bar.showMessage(f"Opened {os.path.basename(remote_path)} with system default", 4000)
+        elif local_path:
+            QMessageBox.warning(self, "Open with system default failed", local_path)
+
+    def send_remote_path_to_terminal(self, remote_path: str):
+        current_tab = self.tabs.currentWidget()
+        if not isinstance(current_tab, TerminalContainer):
+            return
+        term = current_tab.findChild(TerminalWidget)
+        if term is not None:
+            term.write_to_backend(remote_path)
 
     def on_tool_triggered(self, tool_name):
         if tool_name == "Port Scanner":

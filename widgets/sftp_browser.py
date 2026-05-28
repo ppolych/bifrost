@@ -21,10 +21,14 @@ import paramiko
 from PyQt6.QtCore import QSize, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
+    QLineEdit,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -152,6 +156,10 @@ class _TransferThread(QThread):
 
 class SftpBrowser(QWidget):
     file_double_clicked = pyqtSignal(str)
+    file_text_editor_requested = pyqtSignal(str)
+    file_open_with_requested = pyqtSignal(str, str)
+    file_system_open_requested = pyqtSignal(str)
+    path_to_terminal_requested = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -213,6 +221,8 @@ class SftpBrowser(QWidget):
             "QTreeWidget { background-color: #1e1e1e; color: #ccc; border: none; }"
         )
         self.tree.itemDoubleClicked.connect(self._on_double_click)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.layout.addWidget(self.tree)
 
         # Default icons from the OS style (cross-platform; native-looking).
@@ -371,6 +381,173 @@ class SftpBrowser(QWidget):
         if meta.get("is_dir"):
             return None
         return posixpath.join(self.cwd, meta["name"])
+
+    def _remote_path_for_item(self, item: QTreeWidgetItem | None) -> Optional[str]:
+        if item is None:
+            return None
+        meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        name = meta.get("name")
+        if not name:
+            return None
+        return posixpath.join(self.cwd, name)
+
+    def _show_context_menu(self, pos) -> None:
+        item = self.tree.itemAt(pos)
+        if self.sftp is None or item is None:
+            return
+        meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        remote = self._remote_path_for_item(item)
+        if not remote:
+            return
+        is_dir = bool(meta.get("is_dir"))
+
+        menu = QMenu(self)
+        if is_dir:
+            open_act = menu.addAction(named_icon("folder.svg"), "Open folder")
+            open_act.triggered.connect(lambda: self._open_remote_folder(remote))
+        else:
+            open_act = menu.addAction("Open")
+            open_act.triggered.connect(lambda: self.file_double_clicked.emit(remote))
+            text_act = menu.addAction(named_icon("edit.svg"), "Open in text editor")
+            text_act.triggered.connect(lambda: self.file_text_editor_requested.emit(remote))
+            custom_act = menu.addAction("Open with command...")
+            custom_act.triggered.connect(lambda: self._prompt_open_with(remote))
+            default_act = menu.addAction("Open with system default")
+            default_act.triggered.connect(lambda: self.file_system_open_requested.emit(remote))
+            menu.addSeparator()
+            download_act = menu.addAction(named_icon("download.svg"), "Download")
+            download_act.triggered.connect(lambda: self._download_remote(remote))
+
+        menu.addSeparator()
+        rename_act = menu.addAction(named_icon("edit.svg"), "Rename")
+        rename_act.triggered.connect(lambda: self._rename_remote(remote))
+        delete_act = menu.addAction("Delete")
+        delete_act.triggered.connect(lambda: self._delete_remote(remote, is_dir))
+
+        menu.addSeparator()
+        copy_act = menu.addAction("Copy remote path")
+        copy_act.triggered.connect(lambda: QApplication.clipboard().setText(remote))
+        send_act = menu.addAction("Send path to active terminal")
+        send_act.triggered.connect(lambda: self.path_to_terminal_requested.emit(remote))
+        props_act = menu.addAction("Properties")
+        props_act.triggered.connect(lambda: self._show_properties(remote, item))
+        perms_act = menu.addAction("Permissions")
+        perms_act.triggered.connect(lambda: self._edit_permissions(remote, item))
+
+        menu.exec(self.tree.mapToGlobal(pos))
+
+    def _open_remote_folder(self, remote: str) -> None:
+        self.cwd = posixpath.normpath(remote) or "/"
+        self._refresh()
+
+    def _prompt_open_with(self, remote: str) -> None:
+        command, ok = QInputDialog.getText(
+            self,
+            "Open with command",
+            "Command:",
+            QLineEdit.EchoMode.Normal,
+            "",
+        )
+        command = command.strip()
+        if ok and command:
+            self.file_open_with_requested.emit(remote, command)
+
+    def _download_remote(self, remote: str) -> None:
+        if self.sftp is None or self._transfer is not None:
+            return
+        local, _ = QFileDialog.getSaveFileName(self, "Save as", posixpath.basename(remote))
+        if local:
+            self._start_transfer("download", local, remote)
+
+    def _rename_remote(self, remote: str) -> None:
+        if self.sftp is None:
+            return
+        current_name = posixpath.basename(remote)
+        new_name, ok = QInputDialog.getText(
+            self, "Rename remote item", "New name:", text=current_name,
+        )
+        new_name = new_name.strip()
+        if not ok or not new_name or new_name == current_name:
+            return
+        target = posixpath.join(posixpath.dirname(remote), new_name)
+        try:
+            self.sftp.rename(remote, target)
+        except (OSError, paramiko.SSHException) as e:
+            QMessageBox.warning(self, "Rename failed", str(e))
+            return
+        self._refresh()
+
+    def _delete_remote(self, remote: str, is_dir: bool) -> None:
+        if self.sftp is None:
+            return
+        name = posixpath.basename(remote)
+        reply = QMessageBox.question(
+            self,
+            "Delete remote item",
+            f"Delete '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if is_dir:
+                self.sftp.rmdir(remote)
+            else:
+                self.sftp.remove(remote)
+        except (OSError, paramiko.SSHException) as e:
+            QMessageBox.warning(self, "Delete failed", str(e))
+            return
+        self._refresh()
+
+    def _show_properties(self, remote: str, item: QTreeWidgetItem) -> None:
+        meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        try:
+            attr = self.sftp.stat(remote) if self.sftp is not None else None
+        except (OSError, paramiko.SSHException) as e:
+            QMessageBox.warning(self, "Properties failed", str(e))
+            return
+        mode = stat.filemode(attr.st_mode or 0) if attr is not None else "-"
+        size = "<DIR>" if meta.get("is_dir") else _format_size(attr.st_size or 0)
+        modified = "-"
+        if attr is not None and attr.st_mtime:
+            modified = datetime.fromtimestamp(attr.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        QMessageBox.information(
+            self,
+            "Remote item properties",
+            f"Path: {remote}\nType: {'Folder' if meta.get('is_dir') else 'File'}\n"
+            f"Size: {size}\nModified: {modified}\nPermissions: {mode}",
+        )
+
+    def _edit_permissions(self, remote: str, item: QTreeWidgetItem) -> None:
+        if self.sftp is None:
+            return
+        try:
+            attr = self.sftp.stat(remote)
+        except (OSError, paramiko.SSHException) as e:
+            QMessageBox.warning(self, "Permissions failed", str(e))
+            return
+        current = f"{(attr.st_mode or 0) & 0o777:03o}"
+        value, ok = QInputDialog.getText(
+            self,
+            "Remote permissions",
+            "Octal mode:",
+            text=current,
+        )
+        value = value.strip()
+        if not ok or not value or value == current:
+            return
+        try:
+            mode = int(value, 8)
+        except ValueError:
+            QMessageBox.warning(self, "Invalid permissions", "Use an octal mode such as 644 or 755.")
+            return
+        try:
+            self.sftp.chmod(remote, mode)
+        except (OSError, paramiko.SSHException) as e:
+            QMessageBox.warning(self, "Permissions failed", str(e))
+            return
+        self._refresh()
 
     def _upload(self) -> None:
         if self.sftp is None or self._transfer is not None:

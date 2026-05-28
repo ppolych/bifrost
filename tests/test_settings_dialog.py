@@ -38,7 +38,7 @@ def test_default_settings_includes_new_keys():
         "color_scheme", "cursor_shape", "bell_mode", "wheel_lines",
         "tab_position", "confirm_close_tab", "confirm_quit_with_sessions",
         "ssh_default_user", "ssh_default_port", "ssh_connect_timeout",
-        "ssh_agent_forwarding", "known_hosts_file", "log_directory",
+        "ssh_agent_forwarding", "known_hosts_file", "log_directory", "default_text_editor_command",
         "ssh_default_auth", "ssh_startup_command", "credential_save_policy",
         "credential_provider", "ssh_default_key_path",
         "confirm_multiline_paste", "confirm_large_paste", "large_paste_threshold",
@@ -66,6 +66,7 @@ def test_settings_dialog_round_trip(qapp):
     dlg.agent_fwd_cb.setChecked(True)
     dlg.credential_policy_combo.setCurrentText("Never save")
     dlg.credential_provider_combo.setCurrentText("KeePassXC / Secret Service")
+    dlg.text_editor_cmd_input.setText("code -w")
     dlg.tab_pos_combo.setCurrentText("Bottom")
     # Pick the "Bar" cursor radio
     for btn in dlg.cursor_group.buttons():
@@ -91,6 +92,7 @@ def test_settings_dialog_round_trip(qapp):
     assert out["ssh_agent_forwarding"] is True
     assert out["credential_save_policy"] == "never"
     assert out["credential_provider"] == "keepassxc"
+    assert out["default_text_editor_command"] == "code -w"
     assert out["tab_position"] == "Bottom"
     assert out["cursor_shape"] == "bar"
     assert out["bell_mode"] == "visual"

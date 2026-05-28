@@ -63,6 +63,7 @@ def default_settings() -> dict:
         "log_directory": "logs",
         "strip_newlines_on_paste": False,  # convert CRLF/CR to a single newline before writing to PTY
         "default_editor_command": "",   # optional external editor for SFTP-opened files (empty = built-in)
+        "default_text_editor_command": "",  # optional text editor for explicit SFTP "open in text editor"
 
         # Window / chrome
         "theme": "Dark (MobaXterm style)",

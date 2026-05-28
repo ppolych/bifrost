@@ -10,7 +10,7 @@ def test_default_settings_has_all_new_keys():
     s = default_settings()
     expected = {
         "cursor_color", "selection_bg", "selection_fg", "bold_is_bright",
-        "strip_newlines_on_paste", "default_editor_command",
+        "strip_newlines_on_paste", "default_editor_command", "default_text_editor_command",
         "restore_window_geometry", "window_geometry",
         "main_splitter_sizes", "sidebar_splitter_sizes", "last_sidebar_tab",
         "ssh_keepalive_interval", "ssh_default_auth", "ssh_startup_command",
@@ -39,6 +39,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     dlg.credential_policy_combo.setCurrentText("Never save")
     dlg.credential_provider_combo.setCurrentText("1Password CLI")
     dlg.editor_cmd_input.setText("code -n")
+    dlg.text_editor_cmd_input.setText("notepad")
     dlg.restore_geom_cb.setChecked(False)
     # Mutate the picker-driven keys directly (the dialog stores them in
     # self.settings via callbacks; we simulate the picker result).
@@ -59,6 +60,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     assert out["credential_save_policy"] == "never"
     assert out["credential_provider"] == "1password"
     assert out["default_editor_command"] == "code -n"
+    assert out["default_text_editor_command"] == "notepad"
     assert out["restore_window_geometry"] is False
     assert out["cursor_color"] == "#ff00ff"
     assert out["selection_bg"] == "#222233"

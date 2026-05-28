@@ -415,6 +415,10 @@ class SettingsDialog(QDialog):
         self.editor_cmd_input.setPlaceholderText("e.g. code -n  or  gvim --remote-tab-silent")
         layout.addRow("External editor for SFTP files:", self.editor_cmd_input)
 
+        self.text_editor_cmd_input = QLineEdit(self.settings.get("default_text_editor_command") or "")
+        self.text_editor_cmd_input.setPlaceholderText("e.g. notepad  or  code -w")
+        layout.addRow("Default text editor:", self.text_editor_cmd_input)
+
         note = QLabel(
             "Relative paths are resolved against the working directory; "
             "use ~ for the home directory."
@@ -529,6 +533,7 @@ class SettingsDialog(QDialog):
             "auto_log": self.auto_log_cb.isChecked(),
             "log_directory": self.log_dir_input.text().strip() or "logs",
             "default_editor_command": self.editor_cmd_input.text().strip(),
+            "default_text_editor_command": self.text_editor_cmd_input.text().strip(),
         })
         # cursor_color / selection_bg / selection_fg are already in self.settings
         # because the color pickers mutate it; surface them explicitly so they

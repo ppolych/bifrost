@@ -185,6 +185,67 @@ def test_detach_hides_transfer_progress(browser):
     assert browser.transfer_panel.isHidden()
     assert browser.progress.value() == 0
 
+def test_remote_path_for_item_tracks_tree_metadata(browser):
+    assert browser._remote_path_for_item(browser._file_item) == "/home/user/README"
+    assert browser._remote_path_for_item(browser._dir_item) == "/home/user/src"
+
+
+def test_open_remote_folder_refreshes_listing(browser, monkeypatch):
+    refreshed = []
+    monkeypatch.setattr(browser, "_refresh", lambda: refreshed.append(True))
+
+    browser._open_remote_folder("/home/user/src")
+
+    assert browser.cwd == "/home/user/src"
+    assert refreshed == [True]
+
+
+def test_delete_remote_file_uses_remove(browser, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    browser.sftp = MagicMock()
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(browser, "_refresh", lambda: None)
+
+    browser._delete_remote("/home/user/README", is_dir=False)
+
+    browser.sftp.remove.assert_called_once_with("/home/user/README")
+    browser.sftp.rmdir.assert_not_called()
+
+
+def test_delete_remote_folder_uses_rmdir(browser, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    browser.sftp = MagicMock()
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(browser, "_refresh", lambda: None)
+
+    browser._delete_remote("/home/user/src", is_dir=True)
+
+    browser.sftp.rmdir.assert_called_once_with("/home/user/src")
+    browser.sftp.remove.assert_not_called()
+
+
+def test_edit_permissions_applies_octal_mode(browser, monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+
+    browser.sftp = MagicMock()
+    browser.sftp.stat.return_value = type("Attr", (), {"st_mode": 0o100644})()
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("600", True))
+    monkeypatch.setattr(browser, "_refresh", lambda: None)
+
+    browser._edit_permissions("/home/user/README", browser._file_item)
+
+    browser.sftp.chmod.assert_called_once_with("/home/user/README", 0o600)
+
 
 # ---------------------------------------------------------------------------
 # Tiny test double for QDropEvent — covers what dropEvent actually touches.
