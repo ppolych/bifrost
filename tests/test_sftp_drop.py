@@ -157,6 +157,35 @@ def test_cleanup_transfer_chains_queue(browser, monkeypatch):
     assert browser._upload_queue == [("/b", "/r/b")]
 
 
+def test_transfer_progress_shows_upload_bytes(browser):
+    browser._begin_transfer_progress("upload", "C:/tmp/archive.tar", "/remote/archive.tar")
+    browser._on_transfer_progress(512, 2048)
+
+    assert not browser.transfer_panel.isHidden()
+    assert browser.progress.value() == 25
+    assert browser.progress.format() == "25%"
+    assert "Uploading archive.tar" in browser.transfer_status.text()
+    assert "512 B / 2.0 KB" in browser.transfer_status.text()
+
+
+def test_transfer_progress_shows_download_name_and_completion(browser):
+    browser._begin_transfer_progress("download", "C:/tmp/report.log", "/var/log/report.log")
+    browser._on_transfer_progress(5 * 1024 * 1024, 10 * 1024 * 1024)
+    browser._on_transfer_done("Downloaded report.log")
+
+    assert browser.progress.value() == 100
+    assert browser.progress.format() == "100%"
+    assert browser.transfer_status.text() == "Downloaded report.log"
+
+
+def test_detach_hides_transfer_progress(browser):
+    browser._begin_transfer_progress("upload", "C:/tmp/a.txt", "/remote/a.txt")
+    browser.detach()
+
+    assert browser.transfer_panel.isHidden()
+    assert browser.progress.value() == 0
+
+
 # ---------------------------------------------------------------------------
 # Tiny test double for QDropEvent — covers what dropEvent actually touches.
 # ---------------------------------------------------------------------------

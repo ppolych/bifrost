@@ -222,10 +222,29 @@ class SftpBrowser(QWidget):
         # Optional link icon used when we detect a symlink in listdir_attr.
         self._link_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileLinkIcon)
 
-        # Progress bar (hidden until a transfer starts)
+        # Transfer status (hidden until an upload/download starts).
+        self.transfer_panel = QWidget()
+        transfer_layout = QHBoxLayout(self.transfer_panel)
+        transfer_layout.setContentsMargins(4, 3, 4, 3)
+        transfer_layout.setSpacing(8)
+        self.transfer_status = QLabel("")
+        self.transfer_status.setStyleSheet("color: #cfcfcf;")
         self.progress = QProgressBar()
-        self.progress.hide()
-        self.layout.addWidget(self.progress)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setTextVisible(True)
+        self.progress.setMinimumWidth(140)
+        self.progress.setStyleSheet(
+            "QProgressBar { background-color: #1e1e1e; border: 1px solid #555; "
+            "color: #f0f0f0; height: 14px; text-align: center; }"
+            "QProgressBar::chunk { background-color: #4ea1f3; }"
+        )
+        transfer_layout.addWidget(self.transfer_status, 1)
+        transfer_layout.addWidget(self.progress, 2)
+        self.transfer_panel.hide()
+        self.layout.addWidget(self.transfer_panel)
+        self._transfer_mode: Optional[str] = None
+        self._transfer_name: str = ""
 
         self._set_buttons_enabled(False)
 
@@ -257,6 +276,7 @@ class SftpBrowser(QWidget):
             self.sftp = None
         self.tree.clear()
         self.path_label.setText("Not connected")
+        self._reset_transfer_progress()
         self._set_buttons_enabled(False)
 
     def is_attached(self) -> bool:
@@ -376,10 +396,7 @@ class SftpBrowser(QWidget):
         self._start_transfer("download", local, remote)
 
     def _start_transfer(self, mode: str, local: str, remote: str) -> None:
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self.progress.setFormat(f"{mode}: %p%")
-        self.progress.show()
+        self._begin_transfer_progress(mode, local, remote)
         self._set_buttons_enabled(False)
 
         t = _TransferThread(self.sftp, mode, local, remote)
@@ -391,18 +408,57 @@ class SftpBrowser(QWidget):
         t.start()
 
     def _on_transfer_progress(self, done: int, total: int) -> None:
+        self._update_transfer_progress(done, total)
+
+    def _begin_transfer_progress(self, mode: str, local: str, remote: str) -> None:
+        self._transfer_mode = mode
+        self._transfer_name = (
+            os.path.basename(local) if mode == "upload" else posixpath.basename(remote)
+        )
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setFormat("0%")
+        self.transfer_panel.show()
+        self._update_transfer_progress(0, 0)
+
+    def _update_transfer_progress(self, done: int, total: int) -> None:
         if total > 0:
-            self.progress.setValue(int(done * 100 / total))
+            percent = max(0, min(100, int(done * 100 / total)))
+            size_text = f"{_format_size(done)} / {_format_size(total)}"
+        else:
+            percent = 0
+            size_text = _format_size(done)
+        self.progress.setValue(percent)
+        self.progress.setFormat(f"{percent}%")
+
+        action = "Uploading" if self._transfer_mode == "upload" else "Downloading"
+        if self._transfer_name:
+            self.transfer_status.setText(f"{action} {self._transfer_name}  -  {size_text}")
+        else:
+            self.transfer_status.setText(f"{action}  -  {size_text}")
+
+    def _reset_transfer_progress(self) -> None:
+        self._transfer_mode = None
+        self._transfer_name = ""
+        self.progress.setValue(0)
+        self.progress.setFormat("0%")
+        self.transfer_status.clear()
+        self.transfer_panel.hide()
 
     def _on_transfer_done(self, message: str) -> None:
+        self.progress.setValue(100)
+        self.progress.setFormat("100%")
+        self.transfer_status.setText(message)
+        self.transfer_panel.show()
         self.path_label.setText(f"{self.cwd}   ·   {message}")
         self._refresh()
 
     def _on_transfer_failed(self, message: str) -> None:
+        self.transfer_status.setText(f"Transfer failed: {message}")
+        self.transfer_panel.show()
         QMessageBox.warning(self, "SFTP transfer failed", message)
 
     def _cleanup_transfer(self) -> None:
-        self.progress.hide()
         self._set_buttons_enabled(True)
         self._transfer = None
         # Chain into the next queued upload (drag-and-drop with multiple files).
