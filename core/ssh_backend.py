@@ -52,6 +52,11 @@ class SshCredentials:
             username=data.get("user", "") or "",
             auth=data.get("auth", "agent"),
             key_filename=data.get("key_path") or None,
+            connect_timeout=float(data.get("connect_timeout", 15) or 15),
+            agent_forwarding=bool(data.get("agent_forwarding", False)),
+            keepalive_interval=int(data.get("keepalive_interval", 0) or 0),
+            tcp_keepalive=bool(data.get("tcp_keepalive", False)),
+            known_hosts_file=data.get("known_hosts_file") or None,
             startup_command=data.get("command") or "",
         )
 

@@ -35,10 +35,14 @@ class _MemKeyring(keyring.backend.KeyringBackend):
 
 @pytest.fixture
 def mem_keyring(monkeypatch):
+    from core import credentials
+
+    credentials.set_provider("system")
     backend = _MemKeyring()
     prev = keyring.get_keyring()
     keyring.set_keyring(backend)
     yield backend
+    credentials.set_provider("system")
     keyring.set_keyring(prev)
 
 
@@ -118,3 +122,44 @@ def test_credential_prompt_disables_remember_without_keyring(qapp):
     dlg._remember.setChecked(True)  # user can't actually check it; widget is disabled
     # Even if forced, remember() returns False when the checkbox is disabled.
     assert dlg.remember() is False
+
+
+def test_provider_defaults_to_system_for_unknown_values():
+    from core import credentials
+
+    credentials.set_provider("1password")
+    assert credentials.provider() == "1password"
+    credentials.set_provider("nope")
+    assert credentials.provider() == "system"
+
+
+def test_onepassword_provider_uses_op_cli(monkeypatch):
+    from core import credentials
+
+    calls = []
+
+    class Result:
+        def __init__(self, returncode=0, stdout=""):
+            self.returncode = returncode
+            self.stdout = stdout
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:3] == ["op", "item", "get"]:
+            return Result(stdout="secret\n")
+        return Result()
+
+    monkeypatch.setattr(credentials.shutil, "which", lambda name: "op.exe" if name == "op" else None)
+    monkeypatch.setattr(credentials.subprocess, "run", fake_run)
+    credentials.set_provider("1password")
+    try:
+        assert credentials.is_available() is True
+        assert credentials.get_password("alice", "host", 22) == "secret"
+        assert credentials.set_password("alice", "host", 22, "new-secret") is True
+        assert credentials.forget_password("alice", "host", 22) is True
+    finally:
+        credentials.set_provider("system")
+
+    assert calls[0][:3] == ["op", "item", "get"]
+    assert calls[1][:3] == ["op", "item", "edit"]
+    assert calls[2][:3] == ["op", "item", "delete"]

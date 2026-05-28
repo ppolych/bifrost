@@ -13,6 +13,8 @@ All functions are safe to call even when keyring isn't installed.
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from typing import Optional
 
 try:
@@ -36,13 +38,39 @@ SERVICE_PASSPHRASE = "bifrost-ssh-passphrase"
 _LEGACY_SERVICE_PASSWORD = "asbru-ssh"
 _LEGACY_SERVICE_PASSPHRASE = "asbru-ssh-passphrase"
 
+PROVIDER_SYSTEM = "system"
+PROVIDER_1PASSWORD = "1password"
+PROVIDER_KEEPASSXC = "keepassxc"
+PROVIDER_LABELS = {
+    PROVIDER_SYSTEM: "system keyring",
+    PROVIDER_1PASSWORD: "1Password",
+    PROVIDER_KEEPASSXC: "KeePassXC",
+}
+_provider = PROVIDER_SYSTEM
 
-def is_available() -> bool:
+
+def set_provider(provider: str | None) -> None:
+    global _provider
+    _provider = provider if provider in PROVIDER_LABELS else PROVIDER_SYSTEM
+
+
+def provider() -> str:
+    return _provider
+
+
+def provider_label(provider_name: str | None = None) -> str:
+    return PROVIDER_LABELS.get(provider_name or _provider, PROVIDER_LABELS[PROVIDER_SYSTEM])
+
+
+def is_available(provider_name: str | None = None) -> bool:
     """True if a working keyring backend is configured and can persist secrets.
 
     A `fail.Keyring` chain element is the sentinel keyring uses when nothing
     real is reachable — treat that as unavailable so we don't pretend to save.
     """
+    active = provider_name or _provider
+    if active == PROVIDER_1PASSWORD:
+        return shutil.which("op") is not None
     if not _HAS_KEYRING:
         return False
     try:
@@ -70,12 +98,88 @@ def passphrase_account(key_path: str) -> str:
     return (key_path or "").strip()
 
 
+def _op_title(service: str, account: str) -> str:
+    return f"Bifrost {service} {account}".strip()
+
+
+def _op_read(service: str, account: str) -> Optional[str]:
+    if not is_available(PROVIDER_1PASSWORD):
+        return None
+    try:
+        proc = subprocess.run(
+            ["op", "item", "get", _op_title(service, account), "--fields", "password", "--reveal"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        log.debug("1Password read failed", exc_info=True)
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.rstrip("\r\n") or None
+
+
+def _op_write(service: str, account: str, secret: str) -> bool:
+    if not is_available(PROVIDER_1PASSWORD) or not secret:
+        return False
+    title = _op_title(service, account)
+    assignment = f"password={secret}"
+    try:
+        edit = subprocess.run(
+            ["op", "item", "edit", title, assignment],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if edit.returncode == 0:
+            return True
+        create = subprocess.run(
+            [
+                "op", "item", "create",
+                "--category", "password",
+                "--title", title,
+                "--tags", "bifrost",
+                assignment,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        return create.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        log.warning("1Password write failed for %s", account, exc_info=True)
+        return False
+
+
+def _op_delete(service: str, account: str) -> bool:
+    if not is_available(PROVIDER_1PASSWORD):
+        return False
+    try:
+        proc = subprocess.run(
+            ["op", "item", "delete", _op_title(service, account), "--archive"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        log.debug("1Password delete failed", exc_info=True)
+        return False
+
+
 # ---- password helpers ------------------------------------------------------
 
 def get_password(user: str, host: str, port: int | str = 22) -> Optional[str]:
+    account = password_account(user, host, port)
+    if _provider == PROVIDER_1PASSWORD:
+        return _op_read(SERVICE_PASSWORD, account)
     if not _HAS_KEYRING:
         return None
-    account = password_account(user, host, port)
     try:
         pw = keyring.get_password(SERVICE_PASSWORD, account)
         if pw is not None:
@@ -88,9 +192,11 @@ def get_password(user: str, host: str, port: int | str = 22) -> Optional[str]:
 
 
 def set_password(user: str, host: str, port: int | str, password: str) -> bool:
+    account = password_account(user, host, port)
+    if _provider == PROVIDER_1PASSWORD:
+        return _op_write(SERVICE_PASSWORD, account, password)
     if not is_available() or not password:
         return False
-    account = password_account(user, host, port)
     try:
         keyring.set_password(SERVICE_PASSWORD, account, password)
         return True
@@ -100,9 +206,11 @@ def set_password(user: str, host: str, port: int | str, password: str) -> bool:
 
 
 def forget_password(user: str, host: str, port: int | str = 22) -> bool:
+    account = password_account(user, host, port)
+    if _provider == PROVIDER_1PASSWORD:
+        return _op_delete(SERVICE_PASSWORD, account)
     if not _HAS_KEYRING:
         return False
-    account = password_account(user, host, port)
     removed = False
     for service in (SERVICE_PASSWORD, _LEGACY_SERVICE_PASSWORD):
         try:
@@ -119,9 +227,11 @@ def forget_password(user: str, host: str, port: int | str = 22) -> bool:
 # ---- passphrase helpers ----------------------------------------------------
 
 def get_passphrase(key_path: str) -> Optional[str]:
+    account = passphrase_account(key_path)
+    if _provider == PROVIDER_1PASSWORD:
+        return _op_read(SERVICE_PASSPHRASE, account)
     if not _HAS_KEYRING or not key_path:
         return None
-    account = passphrase_account(key_path)
     try:
         pp = keyring.get_password(SERVICE_PASSPHRASE, account)
         if pp is not None:
@@ -134,10 +244,13 @@ def get_passphrase(key_path: str) -> Optional[str]:
 
 
 def set_passphrase(key_path: str, passphrase: str) -> bool:
+    account = passphrase_account(key_path)
+    if _provider == PROVIDER_1PASSWORD:
+        return _op_write(SERVICE_PASSPHRASE, account, passphrase)
     if not is_available() or not key_path or not passphrase:
         return False
     try:
-        keyring.set_password(SERVICE_PASSPHRASE, passphrase_account(key_path), passphrase)
+        keyring.set_password(SERVICE_PASSPHRASE, account, passphrase)
         return True
     except keyring.errors.KeyringError:
         log.warning("Could not save passphrase for %s", key_path, exc_info=True)
@@ -145,9 +258,11 @@ def set_passphrase(key_path: str, passphrase: str) -> bool:
 
 
 def forget_passphrase(key_path: str) -> bool:
+    account = passphrase_account(key_path)
+    if _provider == PROVIDER_1PASSWORD:
+        return _op_delete(SERVICE_PASSPHRASE, account)
     if not _HAS_KEYRING or not key_path:
         return False
-    account = passphrase_account(key_path)
     removed = False
     for service in (SERVICE_PASSPHRASE, _LEGACY_SERVICE_PASSPHRASE):
         try:

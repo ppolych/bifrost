@@ -87,6 +87,7 @@ def default_settings() -> dict:
         "known_hosts_file": "~/.ssh/known_hosts",
 
         # Security / credentials
+        "credential_provider": "system",  # system | 1password | keepassxc
         "credential_save_policy": "ask",  # ask | never
     }
 

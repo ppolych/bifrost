@@ -34,6 +34,26 @@ def test_credentials_from_session_with_key():
     assert creds.startup_command == "uptime"
 
 
+def test_credentials_from_session_with_advanced_ssh_fields():
+    from core.ssh_backend import SshCredentials
+
+    creds = SshCredentials.from_session({
+        "host": "h",
+        "user": "u",
+        "connect_timeout": 45,
+        "agent_forwarding": True,
+        "keepalive_interval": 60,
+        "tcp_keepalive": True,
+        "known_hosts_file": "~/.ssh/custom_known_hosts",
+    })
+
+    assert creds.connect_timeout == 45
+    assert creds.agent_forwarding is True
+    assert creds.keepalive_interval == 60
+    assert creds.tcp_keepalive is True
+    assert creds.known_hosts_file == "~/.ssh/custom_known_hosts"
+
+
 def test_credentials_port_coercion_handles_empty():
     from core.ssh_backend import SshCredentials
 
@@ -153,3 +173,35 @@ def test_session_dialog_loads_existing_ssh_session(qapp):
     assert data["auth"] == "key"
     assert data["key_path"] == "~/.ssh/prod"
     assert data["command"] == "tmux attach || tmux"
+
+
+def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog(session={
+        "name": "prod",
+        "type": "SSH",
+        "host": "prod.example.com",
+        "user": "admin",
+        "connect_timeout": 45,
+        "agent_forwarding": True,
+        "keepalive_interval": 60,
+        "tcp_keepalive": True,
+        "known_hosts_file": "~/.ssh/prod_known_hosts",
+        "mac": "AA:BB:CC:11:22:33",
+        "wol_broadcast": "10.0.0.255",
+    })
+
+    dlg.set_current_section("advanced_ssh")
+    assert dlg.tabs.currentWidget() is dlg.advanced_ssh_tab
+    dlg.set_current_section("network")
+    assert dlg.tabs.currentWidget() is dlg.network_tab
+
+    data = dlg.get_data()
+    assert data["connect_timeout"] == 45
+    assert data["agent_forwarding"] is True
+    assert data["keepalive_interval"] == 60
+    assert data["tcp_keepalive"] is True
+    assert data["known_hosts_file"] == "~/.ssh/prod_known_hosts"
+    assert data["mac"] == "AA:BB:CC:11:22:33"
+    assert data["wol_broadcast"] == "10.0.0.255"

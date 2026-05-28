@@ -43,6 +43,11 @@ ENCODINGS = ["UTF-8", "ISO-8859-1", "ASCII", "UTF-16"]
 THEMES = ["Dark (MobaXterm style)", "Light", "Solarized", "High Contrast"]
 SSH_AUTH_MODES = [("SSH agent", "agent"), ("Private key", "key"), ("Password", "password")]
 CREDENTIAL_POLICIES = [("Ask each time", "ask"), ("Never save", "never")]
+CREDENTIAL_PROVIDERS = [
+    ("System keyring", "system"),
+    ("1Password CLI", "1password"),
+    ("KeePassXC / Secret Service", "keepassxc"),
+]
 
 
 class SettingsDialog(QDialog):
@@ -370,9 +375,17 @@ class SettingsDialog(QDialog):
         self.credential_policy_combo.setCurrentIndex(idx if idx >= 0 else 0)
         layout.addRow("Credential saving:", self.credential_policy_combo)
 
+        self.credential_provider_combo = QComboBox()
+        for label, value in CREDENTIAL_PROVIDERS:
+            self.credential_provider_combo.addItem(label, value)
+        current_provider = self.settings.get("credential_provider", "system")
+        idx = self.credential_provider_combo.findData(current_provider)
+        self.credential_provider_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        layout.addRow("Credential provider:", self.credential_provider_combo)
+
         note = QLabel(
             "Passwords and key passphrases are never stored in sessions.json. "
-            "When saving is enabled, Bifrost uses the system keyring."
+            "The selected provider handles secret storage outside session files."
         )
         note.setStyleSheet("color: #888; font-size: 10px;")
         note.setWordWrap(True)
@@ -511,6 +524,7 @@ class SettingsDialog(QDialog):
             "known_hosts_file": self.known_hosts_input.text().strip() or "~/.ssh/known_hosts",
 
             "credential_save_policy": self.credential_policy_combo.currentData() or "ask",
+            "credential_provider": self.credential_provider_combo.currentData() or "system",
 
             "auto_log": self.auto_log_cb.isChecked(),
             "log_directory": self.log_dir_input.text().strip() or "logs",

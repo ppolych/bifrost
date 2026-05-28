@@ -41,6 +41,7 @@ class Sidebar(QWidget):
     wake_on_lan = pyqtSignal(dict)             # send a WoL magic packet for this session
     new_session_requested = pyqtSignal(list)   # parent folder path; opens SessionDialog
     edit_session_requested = pyqtSignal(list, dict)
+    edit_session_section_requested = pyqtSignal(list, dict, str)
     macro_triggered = pyqtSignal(str)
     collapse_requested = pyqtSignal(bool)
     
@@ -322,6 +323,22 @@ class Sidebar(QWidget):
             edit = QAction("Edit session...", self)
             edit.triggered.connect(lambda: self.edit_session_requested.emit(parent_path, session))
             menu.addAction(edit)
+            edit_menu = menu.addMenu("Edit session section")
+            advanced = QAction("Advanced SSH settings", self)
+            advanced.triggered.connect(
+                lambda: self.edit_session_section_requested.emit(parent_path, session, "advanced_ssh")
+            )
+            edit_menu.addAction(advanced)
+            terminal = QAction("Terminal settings", self)
+            terminal.triggered.connect(
+                lambda: self.edit_session_section_requested.emit(parent_path, session, "terminal")
+            )
+            edit_menu.addAction(terminal)
+            network = QAction("Network settings", self)
+            network.triggered.connect(
+                lambda: self.edit_session_section_requested.emit(parent_path, session, "network")
+            )
+            edit_menu.addAction(network)
             menu.addSeparator()
             rename = QAction("Rename…", self)
             rename.triggered.connect(lambda: self._prompt_rename_session(parent_path, session))

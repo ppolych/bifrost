@@ -40,7 +40,7 @@ def test_default_settings_includes_new_keys():
         "ssh_default_user", "ssh_default_port", "ssh_connect_timeout",
         "ssh_agent_forwarding", "known_hosts_file", "log_directory",
         "ssh_default_auth", "ssh_startup_command", "credential_save_policy",
-        "ssh_default_key_path",
+        "credential_provider", "ssh_default_key_path",
         "confirm_multiline_paste", "confirm_large_paste", "large_paste_threshold",
     }
     assert expected.issubset(s.keys())
@@ -65,6 +65,7 @@ def test_settings_dialog_round_trip(qapp):
     dlg.ssh_startup_command_input.setText("uptime")
     dlg.agent_fwd_cb.setChecked(True)
     dlg.credential_policy_combo.setCurrentText("Never save")
+    dlg.credential_provider_combo.setCurrentText("KeePassXC / Secret Service")
     dlg.tab_pos_combo.setCurrentText("Bottom")
     # Pick the "Bar" cursor radio
     for btn in dlg.cursor_group.buttons():
@@ -89,6 +90,7 @@ def test_settings_dialog_round_trip(qapp):
     assert out["ssh_startup_command"] == "uptime"
     assert out["ssh_agent_forwarding"] is True
     assert out["credential_save_policy"] == "never"
+    assert out["credential_provider"] == "keepassxc"
     assert out["tab_position"] == "Bottom"
     assert out["cursor_shape"] == "bar"
     assert out["bell_mode"] == "visual"

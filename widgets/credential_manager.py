@@ -36,9 +36,9 @@ class CredentialManager(QWidget):
 
         self.layout = QVBoxLayout(self)
 
-        title = QLabel("Saved credentials (system keyring)")
-        title.setStyleSheet("font-weight: bold; color: #aaa;")
-        self.layout.addWidget(title)
+        self.title = QLabel("")
+        self.title.setStyleSheet("font-weight: bold; color: #aaa;")
+        self.layout.addWidget(self.title)
 
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("color: #888; font-size: 10px;")
@@ -116,9 +116,9 @@ class CredentialManager(QWidget):
         self.forget_requested.emit(session)
 
     def _update_status_label(self) -> None:
+        label = credentials.provider_label()
+        self.title.setText(f"Saved credentials ({label})")
         if credentials.is_available():
-            self.status_label.setText("Keyring backend: available")
+            self.status_label.setText(f"{label}: available")
         else:
-            self.status_label.setText(
-                "No usable keyring backend — credentials cannot be saved on this system."
-            )
+            self.status_label.setText(f"No usable {label} backend - credentials cannot be saved on this system.")

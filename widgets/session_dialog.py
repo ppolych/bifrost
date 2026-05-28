@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
+    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 from core import wsl
@@ -69,15 +70,52 @@ class SessionDialog(QDialog):
         self.password_note.setStyleSheet("color: #888; font-size: 10px;")
         self.ssh_layout.addRow(self.password_note)
 
-        # Wake-on-LAN: optional MAC + broadcast address
+        self.proto_tabs.addTab(self.ssh_tab, "SSH")
+
+        # Advanced SSH settings tab
+        self.advanced_ssh_tab = QWidget()
+        self.advanced_ssh_layout = QFormLayout(self.advanced_ssh_tab)
+        self.connect_timeout_sb = QDoubleSpinBox()
+        self.connect_timeout_sb.setRange(1.0, 120.0)
+        self.connect_timeout_sb.setDecimals(1)
+        self.connect_timeout_sb.setSingleStep(1.0)
+        self.connect_timeout_sb.setValue(15.0)
+        self.advanced_ssh_layout.addRow("Connect timeout (s):", self.connect_timeout_sb)
+
+        self.agent_forwarding_cb = QCheckBox("Forward SSH agent")
+        self.advanced_ssh_layout.addRow(self.agent_forwarding_cb)
+
+        self.keepalive_sb = QSpinBox()
+        self.keepalive_sb.setRange(0, 600)
+        self.keepalive_sb.setSpecialValueText("Use global")
+        self.keepalive_sb.setSuffix(" s")
+        self.keepalive_sb.setValue(30)
+        self.advanced_ssh_layout.addRow("Keepalive interval:", self.keepalive_sb)
+
+        self.tcp_keepalive_cb = QCheckBox("Enable TCP keepalive")
+        self.tcp_keepalive_cb.setChecked(True)
+        self.advanced_ssh_layout.addRow(self.tcp_keepalive_cb)
+
+        self.known_hosts_input = QLineEdit()
+        self.known_hosts_input.setPlaceholderText("Use global known_hosts file")
+        known_browse = QPushButton("Browse...")
+        known_browse.clicked.connect(self._pick_known_hosts)
+        known_row = QHBoxLayout()
+        known_row.addWidget(self.known_hosts_input)
+        known_row.addWidget(known_browse)
+        self.advanced_ssh_layout.addRow("Known hosts file:", known_row)
+        self.tabs.addTab(self.advanced_ssh_tab, "Advanced SSH Settings")
+
+        # Network settings tab
+        self.network_tab = QWidget()
+        self.network_layout = QFormLayout(self.network_tab)
         self.mac_input = QLineEdit()
         self.mac_input.setPlaceholderText("AA:BB:CC:11:22:33  (optional, enables Wake on LAN)")
-        self.ssh_layout.addRow("MAC address:", self.mac_input)
+        self.network_layout.addRow("MAC address:", self.mac_input)
         self.broadcast_input = QLineEdit()
         self.broadcast_input.setPlaceholderText("255.255.255.255")
-        self.ssh_layout.addRow("WoL broadcast:", self.broadcast_input)
-
-        self.proto_tabs.addTab(self.ssh_tab, "SSH")
+        self.network_layout.addRow("WoL broadcast:", self.broadcast_input)
+        self.tabs.addTab(self.network_tab, "Network Settings")
 
         # RDP sub-tab (placeholder, backend not implemented)
         self.rdp_tab = QWidget()
@@ -135,6 +173,25 @@ class SessionDialog(QDialog):
         if path:
             self.key_path_input.setText(path)
 
+    def _pick_known_hosts(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select known_hosts file", self.known_hosts_input.text(), "All Files (*)"
+        )
+        if path:
+            self.known_hosts_input.setText(path)
+
+    def set_current_section(self, section: str) -> None:
+        section_map = {
+            "connection": self.conn_tab,
+            "advanced_ssh": self.advanced_ssh_tab,
+            "terminal": self.term_tab,
+            "network": self.network_tab,
+        }
+        page = section_map.get(section, self.conn_tab)
+        idx = self.tabs.indexOf(page)
+        if idx >= 0:
+            self.tabs.setCurrentIndex(idx)
+
     def _on_auth_changed(self, label: str):
         is_key = label == "Private key"
         is_pwd = label == "Password"
@@ -172,6 +229,12 @@ class SessionDialog(QDialog):
         self.command_input.setText(session.get("command") or "")
         self.mac_input.setText(session.get("mac") or "")
         self.broadcast_input.setText(session.get("wol_broadcast") or "")
+        if "connect_timeout" in session:
+            self.connect_timeout_sb.setValue(float(session.get("connect_timeout") or 15))
+        self.agent_forwarding_cb.setChecked(bool(session.get("agent_forwarding", False)))
+        self.keepalive_sb.setValue(int(session.get("keepalive_interval", 30) or 0))
+        self.tcp_keepalive_cb.setChecked(bool(session.get("tcp_keepalive", True)))
+        self.known_hosts_input.setText(session.get("known_hosts_file") or "")
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -212,6 +275,11 @@ class SessionDialog(QDialog):
                 "auth": self._auth_value(),
                 "key_path": self.key_path_input.text().strip() or None,
                 "command": self.command_input.text().strip() or None,
+                "connect_timeout": self.connect_timeout_sb.value(),
+                "agent_forwarding": self.agent_forwarding_cb.isChecked(),
+                "keepalive_interval": self.keepalive_sb.value(),
+                "tcp_keepalive": self.tcp_keepalive_cb.isChecked(),
+                "known_hosts_file": self.known_hosts_input.text().strip() or None,
                 "mac": self.mac_input.text().strip() or None,
                 "wol_broadcast": self.broadcast_input.text().strip() or None,
                 "overrides": overrides,

@@ -51,6 +51,7 @@ class BifrostApp(QMainWindow):
         self.resize(1200, 900)
         
         self.settings = settings if settings is not None else load_settings()
+        credentials.set_provider(self.settings.get("credential_provider", "system"))
         
         self.apply_global_visuals()
         self.session_manager = SessionManager()
@@ -90,6 +91,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.wake_on_lan.connect(self.on_wake_on_lan)
         self.sidebar.new_session_requested.connect(self.open_session_dialog)
         self.sidebar.edit_session_requested.connect(self.edit_session)
+        self.sidebar.edit_session_section_requested.connect(self.edit_session)
         self.sidebar.add_btn.clicked.connect(self.open_session_dialog)
         self.sidebar.export_btn.clicked.connect(self.export_sessions)
         self.sidebar.import_btn.clicked.connect(self.import_sessions)
@@ -317,6 +319,7 @@ class BifrostApp(QMainWindow):
         dialog.import_mobaxterm_requested.connect(self.import_mobaxterm_sessions)
         if dialog.exec():
             self.settings = dialog.get_settings()
+            credentials.set_provider(self.settings.get("credential_provider", "system"))
             save_settings(self.settings)
             self.apply_global_visuals()
             self.sidebar.sftp_widget.set_show_hidden(self.settings.get("sftp_show_hidden", False))
@@ -753,22 +756,28 @@ class BifrostApp(QMainWindow):
         if not creds.startup_command:
             creds.startup_command = self.settings.get("ssh_startup_command", "") or ""
         # Apply settings-level defaults that aren't part of the session dict.
-        try:
-            creds.connect_timeout = float(self.settings.get("ssh_connect_timeout", 15) or 15)
-        except (TypeError, ValueError):
-            creds.connect_timeout = 15.0
-        creds.agent_forwarding = bool(self.settings.get("ssh_agent_forwarding", False))
-        creds.known_hosts_file = self.settings.get("known_hosts_file") or None
-        try:
-            creds.keepalive_interval = int(self.settings.get("ssh_keepalive_interval", 0) or 0)
-        except (TypeError, ValueError):
-            creds.keepalive_interval = 0
-        creds.tcp_keepalive = bool(self.settings.get("ssh_tcp_keepalive", True))
+        if "connect_timeout" not in session:
+            try:
+                creds.connect_timeout = float(self.settings.get("ssh_connect_timeout", 15) or 15)
+            except (TypeError, ValueError):
+                creds.connect_timeout = 15.0
+        if "agent_forwarding" not in session:
+            creds.agent_forwarding = bool(self.settings.get("ssh_agent_forwarding", False))
+        if "known_hosts_file" not in session:
+            creds.known_hosts_file = self.settings.get("known_hosts_file") or None
+        if "keepalive_interval" not in session:
+            try:
+                creds.keepalive_interval = int(self.settings.get("ssh_keepalive_interval", 0) or 0)
+            except (TypeError, ValueError):
+                creds.keepalive_interval = 0
+        if "tcp_keepalive" not in session:
+            creds.tcp_keepalive = bool(self.settings.get("ssh_tcp_keepalive", True))
 
         # Track whether we should persist after a successful connect.
         save_password = False
         save_passphrase = False
         keyring_ok = credentials.is_available()
+        credential_store = credentials.provider_label()
         credential_policy = self.settings.get("credential_save_policy", "ask")
         remember_enabled = keyring_ok and credential_policy != "never"
 
@@ -781,6 +790,7 @@ class BifrostApp(QMainWindow):
                     title=f"Password for {creds.username}@{creds.host}",
                     prompt=f"Enter SSH password for {creds.username}@{creds.host}:{creds.port}",
                     remember_enabled=remember_enabled,
+                    remember_label=f"Remember in {credential_store}",
                     parent=self,
                 )
                 if text is None:
@@ -798,6 +808,7 @@ class BifrostApp(QMainWindow):
                     title=f"Passphrase for {creds.key_filename or '(key)'}",
                     prompt="Enter key passphrase (leave blank if the key is unencrypted):",
                     remember_enabled=remember_enabled,
+                    remember_label=f"Remember in {credential_store}",
                     parent=self,
                 )
                 if text is None:
@@ -841,14 +852,14 @@ class BifrostApp(QMainWindow):
                 ):
                     persisted = True
                     self.status_bar.showMessage(
-                        f"Saved password for {creds.username}@{creds.host} to keyring",
+                        f"Saved password for {creds.username}@{creds.host} to {credentials.provider_label()}",
                         4000,
                     )
             if save_passphrase and creds.passphrase and creds.key_filename:
                 if credentials.set_passphrase(creds.key_filename, creds.passphrase):
                     persisted = True
                     self.status_bar.showMessage(
-                        f"Saved passphrase for {creds.key_filename} to keyring",
+                        f"Saved passphrase for {creds.key_filename} to {credentials.provider_label()}",
                         4000,
                     )
             if persisted:
@@ -939,8 +950,9 @@ class BifrostApp(QMainWindow):
             else:
                 self.new_terminal_tab(data["name"])
 
-    def edit_session(self, parent_path: list, session: dict):
+    def edit_session(self, parent_path: list, session: dict, section: str = "connection"):
         dialog = SessionDialog(self, session=session)
+        dialog.set_current_section(section)
         if not dialog.exec():
             return
         data = dialog.get_data()

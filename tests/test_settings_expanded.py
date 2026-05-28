@@ -16,7 +16,7 @@ def test_default_settings_has_all_new_keys():
         "ssh_keepalive_interval", "ssh_default_auth", "ssh_startup_command",
         "ssh_default_key_path",
         "confirm_multiline_paste", "confirm_large_paste", "large_paste_threshold",
-        "credential_save_policy",
+        "credential_save_policy", "credential_provider",
     }
     missing = expected - s.keys()
     assert not missing, f"missing: {missing}"
@@ -37,6 +37,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     dlg.ssh_key_path_input.setText("~/.ssh/id_ed25519")
     dlg.ssh_startup_command_input.setText("tmux attach || tmux")
     dlg.credential_policy_combo.setCurrentText("Never save")
+    dlg.credential_provider_combo.setCurrentText("1Password CLI")
     dlg.editor_cmd_input.setText("code -n")
     dlg.restore_geom_cb.setChecked(False)
     # Mutate the picker-driven keys directly (the dialog stores them in
@@ -56,6 +57,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     assert out["ssh_default_key_path"] == "~/.ssh/id_ed25519"
     assert out["ssh_startup_command"] == "tmux attach || tmux"
     assert out["credential_save_policy"] == "never"
+    assert out["credential_provider"] == "1password"
     assert out["default_editor_command"] == "code -n"
     assert out["restore_window_geometry"] is False
     assert out["cursor_color"] == "#ff00ff"
