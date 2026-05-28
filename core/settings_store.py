@@ -56,6 +56,9 @@ def default_settings() -> dict:
         "wheel_lines": 3,
         "bell_mode": "beep",            # off | beep | visual
         "encoding": "UTF-8",
+        "confirm_multiline_paste": True,
+        "confirm_large_paste": True,
+        "large_paste_threshold": 2000,
         "auto_log": False,
         "log_directory": "logs",
         "strip_newlines_on_paste": False,  # convert CRLF/CR to a single newline before writing to PTY
@@ -74,11 +77,17 @@ def default_settings() -> dict:
         # SSH defaults
         "ssh_default_user": "",
         "ssh_default_port": 22,
+        "ssh_default_auth": "agent",     # agent | key | password
+        "ssh_default_key_path": "",
+        "ssh_startup_command": "",       # sent after SSH shell opens
         "ssh_connect_timeout": 15,
         "ssh_agent_forwarding": False,
         "ssh_keepalive_interval": 30,   # seconds; 0 disables
         "ssh_tcp_keepalive": True,      # kernel-level SO_KEEPALIVE on the socket
         "known_hosts_file": "~/.ssh/known_hosts",
+
+        # Security / credentials
+        "credential_save_policy": "ask",  # ask | never
     }
 
 

@@ -40,6 +40,7 @@ class SshCredentials:
     keepalive_interval: int = 0   # seconds; 0 disables
     tcp_keepalive: bool = False   # SO_KEEPALIVE on the underlying socket
     known_hosts_file: Optional[str] = None
+    startup_command: str = ""
     extra_kwargs: dict = field(default_factory=dict)
 
     @classmethod
@@ -51,6 +52,7 @@ class SshCredentials:
             username=data.get("user", "") or "",
             auth=data.get("auth", "agent"),
             key_filename=data.get("key_path") or None,
+            startup_command=data.get("command") or "",
         )
 
 
@@ -172,6 +174,9 @@ class ParamikoBackend:
             rows, cols = self._pending_winsize
             channel = client.invoke_shell(term=self.term, width=cols, height=rows)
             channel.settimeout(None)
+            if self.creds.startup_command:
+                command = self.creds.startup_command.rstrip("\r\n") + "\n"
+                channel.send(command)
 
             # Optional agent forwarding for the opened shell channel.
             if self.creds.agent_forwarding:

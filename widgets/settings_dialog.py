@@ -41,6 +41,8 @@ BELL_MODES = [("Off", "off"), ("Beep", "beep"), ("Visual flash", "visual")]
 TAB_POSITIONS = ["Top", "Bottom", "Left", "Right"]
 ENCODINGS = ["UTF-8", "ISO-8859-1", "ASCII", "UTF-16"]
 THEMES = ["Dark (MobaXterm style)", "Light", "Solarized", "High Contrast"]
+SSH_AUTH_MODES = [("SSH agent", "agent"), ("Private key", "key"), ("Password", "password")]
+CREDENTIAL_POLICIES = [("Ask each time", "ask"), ("Never save", "never")]
 
 
 class SettingsDialog(QDialog):
@@ -62,6 +64,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._build_terminal_tab(), "Terminal")
         self.tabs.addTab(self._build_appearance_tab(), "Appearance")
         self.tabs.addTab(self._build_ssh_tab(), "SSH")
+        self.tabs.addTab(self._build_security_tab(), "Security")
         self.tabs.addTab(self._build_logging_tab(), "Logging")
 
         buttons = QDialogButtonBox(
@@ -195,6 +198,20 @@ class SettingsDialog(QDialog):
         self.strip_newlines_cb.setChecked(self.settings.get("strip_newlines_on_paste", False))
         layout.addRow(self.strip_newlines_cb)
 
+        self.confirm_multiline_paste_cb = QCheckBox("Confirm before pasting multiple lines")
+        self.confirm_multiline_paste_cb.setChecked(self.settings.get("confirm_multiline_paste", True))
+        layout.addRow(self.confirm_multiline_paste_cb)
+
+        self.confirm_large_paste_cb = QCheckBox("Confirm before large pastes")
+        self.confirm_large_paste_cb.setChecked(self.settings.get("confirm_large_paste", True))
+        layout.addRow(self.confirm_large_paste_cb)
+
+        self.large_paste_threshold_sb = QSpinBox()
+        self.large_paste_threshold_sb.setRange(100, 100_000)
+        self.large_paste_threshold_sb.setSingleStep(500)
+        self.large_paste_threshold_sb.setValue(int(self.settings.get("large_paste_threshold", 2000) or 2000))
+        layout.addRow("Large paste threshold:", self.large_paste_threshold_sb)
+
         self.scrollback_sb = QSpinBox()
         self.scrollback_sb.setRange(100, 1_000_000)
         self.scrollback_sb.setSingleStep(500)
@@ -276,6 +293,27 @@ class SettingsDialog(QDialog):
         self.ssh_port_sb.setValue(int(self.settings.get("ssh_default_port", 22) or 22))
         layout.addRow("Default port:", self.ssh_port_sb)
 
+        self.ssh_auth_combo = QComboBox()
+        for label, value in SSH_AUTH_MODES:
+            self.ssh_auth_combo.addItem(label, value)
+        current_auth = self.settings.get("ssh_default_auth", "agent")
+        idx = self.ssh_auth_combo.findData(current_auth)
+        self.ssh_auth_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        layout.addRow("Default authentication:", self.ssh_auth_combo)
+
+        self.ssh_key_path_input = QLineEdit(self.settings.get("ssh_default_key_path") or "")
+        self.ssh_key_path_input.setPlaceholderText("~/.ssh/id_ed25519")
+        key_browse = QPushButton("Browse...")
+        key_browse.clicked.connect(self._pick_default_key)
+        key_row = QHBoxLayout()
+        key_row.addWidget(self.ssh_key_path_input)
+        key_row.addWidget(key_browse)
+        layout.addRow("Default private key:", key_row)
+
+        self.ssh_startup_command_input = QLineEdit(self.settings.get("ssh_startup_command") or "")
+        self.ssh_startup_command_input.setPlaceholderText("Optional command sent after SSH shell opens")
+        layout.addRow("Startup command:", self.ssh_startup_command_input)
+
         self.ssh_timeout_sb = QDoubleSpinBox()
         self.ssh_timeout_sb.setRange(1.0, 120.0)
         self.ssh_timeout_sb.setDecimals(1)
@@ -312,6 +350,29 @@ class SettingsDialog(QDialog):
         note = QLabel(
             "Passwords and key passphrases are stored in the system keyring "
             "(opt-in at connect time), never in sessions.json."
+        )
+        note.setStyleSheet("color: #888; font-size: 10px;")
+        note.setWordWrap(True)
+        layout.addRow(note)
+
+        return page
+
+    # ----- Security tab -----
+    def _build_security_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QFormLayout(page)
+
+        self.credential_policy_combo = QComboBox()
+        for label, value in CREDENTIAL_POLICIES:
+            self.credential_policy_combo.addItem(label, value)
+        current = self.settings.get("credential_save_policy", "ask")
+        idx = self.credential_policy_combo.findData(current)
+        self.credential_policy_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        layout.addRow("Credential saving:", self.credential_policy_combo)
+
+        note = QLabel(
+            "Passwords and key passphrases are never stored in sessions.json. "
+            "When saving is enabled, Bifrost uses the system keyring."
         )
         note.setStyleSheet("color: #888; font-size: 10px;")
         note.setWordWrap(True)
@@ -384,6 +445,14 @@ class SettingsDialog(QDialog):
         if path:
             self.known_hosts_input.setText(path)
 
+    def _pick_default_key(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select default private key", self.ssh_key_path_input.text(),
+            "All files (*)",
+        )
+        if path:
+            self.ssh_key_path_input.setText(path)
+
     def _pick_log_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, "Select log directory", self.log_dir_input.text(),
@@ -416,6 +485,9 @@ class SettingsDialog(QDialog):
             "right_click_paste": self.rc_paste_cb.isChecked(),
             "copy_on_select": self.copy_on_select_cb.isChecked(),
             "strip_newlines_on_paste": self.strip_newlines_cb.isChecked(),
+            "confirm_multiline_paste": self.confirm_multiline_paste_cb.isChecked(),
+            "confirm_large_paste": self.confirm_large_paste_cb.isChecked(),
+            "large_paste_threshold": self.large_paste_threshold_sb.value(),
             "bold_is_bright": self.bold_bright_cb.isChecked(),
             "scrollback": self.scrollback_sb.value(),
             "wheel_lines": self.wheel_sb.value(),
@@ -429,11 +501,16 @@ class SettingsDialog(QDialog):
 
             "ssh_default_user": self.ssh_user_input.text().strip(),
             "ssh_default_port": self.ssh_port_sb.value(),
+            "ssh_default_auth": self.ssh_auth_combo.currentData() or "agent",
+            "ssh_default_key_path": self.ssh_key_path_input.text().strip(),
+            "ssh_startup_command": self.ssh_startup_command_input.text().strip(),
             "ssh_connect_timeout": self.ssh_timeout_sb.value(),
             "ssh_agent_forwarding": self.agent_fwd_cb.isChecked(),
             "ssh_keepalive_interval": self.keepalive_sb.value(),
             "ssh_tcp_keepalive": self.tcp_keepalive_cb.isChecked(),
             "known_hosts_file": self.known_hosts_input.text().strip() or "~/.ssh/known_hosts",
+
+            "credential_save_policy": self.credential_policy_combo.currentData() or "ask",
 
             "auto_log": self.auto_log_cb.isChecked(),
             "log_directory": self.log_dir_input.text().strip() or "logs",

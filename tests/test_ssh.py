@@ -20,10 +20,18 @@ def test_credentials_from_session_with_key():
     from core.ssh_backend import SshCredentials
 
     creds = SshCredentials.from_session(
-        {"host": "h", "user": "u", "port": 22, "auth": "key", "key_path": "~/.ssh/id_ed25519"}
+        {
+            "host": "h",
+            "user": "u",
+            "port": 22,
+            "auth": "key",
+            "key_path": "~/.ssh/id_ed25519",
+            "command": "uptime",
+        }
     )
     assert creds.auth == "key"
     assert creds.key_filename == "~/.ssh/id_ed25519"
+    assert creds.startup_command == "uptime"
 
 
 def test_credentials_port_coercion_handles_empty():

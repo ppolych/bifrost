@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QAbstractScrollArea,
     QApplication,
     QMenu,
+    QMessageBox,
 )
 
 from core.platform_utils import default_monospace_font
@@ -706,7 +707,30 @@ class TerminalWidget(QAbstractScrollArea):
             # Collapse CRLF/CR to a single LF; useful when pasting from Windows
             # apps into a unix shell that would otherwise see two newlines.
             text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if self._confirm_paste_required(text):
+            lines = text.count("\n") + 1
+            reply = QMessageBox.question(
+                self,
+                "Paste into terminal",
+                f"Paste {len(text)} characters across {lines} line{'s' if lines != 1 else ''}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
         self.write_to_backend(text)
+
+    def _confirm_paste_required(self, text: str) -> bool:
+        if self.settings.get("confirm_multiline_paste", True) and "\n" in text:
+            return True
+        if self.settings.get("confirm_large_paste", True):
+            try:
+                threshold = int(self.settings.get("large_paste_threshold", 2000) or 0)
+            except (TypeError, ValueError):
+                threshold = 2000
+            if threshold > 0 and len(text) >= threshold:
+                return True
+        return False
 
     def _clear_scrollback(self):
         try:

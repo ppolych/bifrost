@@ -684,6 +684,7 @@ class BifrostApp(QMainWindow):
             "port": creds.port,
             "auth": creds.auth,
             "key_path": creds.key_filename,
+            "command": creds.startup_command,
         }
 
     def _build_ssh_backend(self, name: str, session: dict | None) -> ParamikoBackend | None:
@@ -696,10 +697,14 @@ class BifrostApp(QMainWindow):
                 "host": host,
                 "user": user or self.settings.get("ssh_default_user", "") or "",
                 "port": int(self.settings.get("ssh_default_port", 22) or 22),
-                "auth": "agent",
+                "auth": self.settings.get("ssh_default_auth", "agent") or "agent",
             }
+            if session["auth"] == "key":
+                session["key_path"] = self.settings.get("ssh_default_key_path", "") or None
 
         creds = SshCredentials.from_session(session)
+        if not creds.startup_command:
+            creds.startup_command = self.settings.get("ssh_startup_command", "") or ""
         # Apply settings-level defaults that aren't part of the session dict.
         try:
             creds.connect_timeout = float(self.settings.get("ssh_connect_timeout", 15) or 15)
@@ -717,6 +722,8 @@ class BifrostApp(QMainWindow):
         save_password = False
         save_passphrase = False
         keyring_ok = credentials.is_available()
+        credential_policy = self.settings.get("credential_save_policy", "ask")
+        remember_enabled = keyring_ok and credential_policy != "never"
 
         if creds.auth == "password":
             stored = credentials.get_password(creds.username, creds.host, creds.port)
@@ -726,13 +733,13 @@ class BifrostApp(QMainWindow):
                 text, remember = CredentialPrompt.ask(
                     title=f"Password for {creds.username}@{creds.host}",
                     prompt=f"Enter SSH password for {creds.username}@{creds.host}:{creds.port}",
-                    remember_enabled=keyring_ok,
+                    remember_enabled=remember_enabled,
                     parent=self,
                 )
                 if text is None:
                     return None
                 creds.password = text
-                save_password = remember
+                save_password = remember and credential_policy != "never"
         elif creds.auth == "key":
             stored = credentials.get_passphrase(creds.key_filename or "")
             if stored is not None:
@@ -743,13 +750,13 @@ class BifrostApp(QMainWindow):
                 text, remember = CredentialPrompt.ask(
                     title=f"Passphrase for {creds.key_filename or '(key)'}",
                     prompt="Enter key passphrase (leave blank if the key is unencrypted):",
-                    remember_enabled=keyring_ok,
+                    remember_enabled=remember_enabled,
                     parent=self,
                 )
                 if text is None:
                     return None
                 creds.passphrase = text or None
-                save_passphrase = remember and bool(text)
+                save_passphrase = remember and bool(text) and credential_policy != "never"
 
         policy = QtHostKeyPolicy(self.host_key_prompter)
         backend = ParamikoBackend(creds, host_key_policy=policy)
