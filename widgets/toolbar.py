@@ -29,35 +29,41 @@ class MainToolBar(QToolBar):
 
     def __init__(self, parent=None):
         super().__init__("Main Toolbar", parent)
-        self.setIconSize(QSize(32, 32))
-        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        self.setIconSize(QSize(16, 16))
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.setup_actions()
 
     def setup_actions(self):
-        self.session_act = QAction("Session", self)
+        self.session_act = QAction(named_icon("add.svg"), "Session", self)
+        self.session_act.setToolTip("Create a new session")
         self.addAction(self.session_act)
 
-        self.servers_act = QAction("Servers", self)
+        self.servers_act = QAction(named_icon("hub.svg"), "Servers", self)
+        self.servers_act.setToolTip("Show local servers")
         self.addAction(self.servers_act)
 
         self.addSeparator()
 
-        self.multi_act = QAction("MultiExec", self)
+        self.multi_act = QAction(named_icon("bolt.svg"), "MultiExec", self)
+        self.multi_act.setToolTip("Broadcast input to all terminal tabs")
         self.multi_act.setCheckable(True)
         self.multi_act.toggled.connect(self.multi_exec_toggled.emit)
         self.addAction(self.multi_act)
 
         self.addSeparator()
 
-        self.split_vert = QAction("Split V", self)
+        self.split_vert = QAction(named_icon("terminal.svg"), "Split V", self)
+        self.split_vert.setToolTip("Split the current terminal vertically")
         self.split_vert.triggered.connect(lambda: self.split_triggered.emit("vert"))
         self.addAction(self.split_vert)
 
-        self.split_horiz = QAction("Split H", self)
+        self.split_horiz = QAction(named_icon("terminal.svg"), "Split H", self)
+        self.split_horiz.setToolTip("Split the current terminal horizontally")
         self.split_horiz.triggered.connect(lambda: self.split_triggered.emit("horiz"))
         self.addAction(self.split_horiz)
 
-        self.split_quad = QAction("Split Quad", self)
+        self.split_quad = QAction(named_icon("terminal.svg"), "Quad", self)
+        self.split_quad.setToolTip("Split the current terminal into four panes")
         self.split_quad.triggered.connect(lambda: self.split_triggered.emit("quad"))
         self.addAction(self.split_quad)
 
@@ -66,7 +72,8 @@ class MainToolBar(QToolBar):
         # ---- Quick Connect with method picker ----
         qc_widget = QWidget()
         qc_layout = QHBoxLayout(qc_widget)
-        qc_layout.setContentsMargins(5, 0, 5, 0)
+        qc_layout.setContentsMargins(4, 0, 4, 0)
+        qc_layout.setSpacing(4)
 
         qc_label = QLabel("Quick Connect:")
         qc_label.setStyleSheet("color: #aaa; font-size: 10px;")
@@ -82,7 +89,7 @@ class MainToolBar(QToolBar):
         qc_layout.addWidget(self.qc_method)
 
         self.qc_input = QLineEdit()
-        self.qc_input.setFixedWidth(220)
+        self.qc_input.setFixedWidth(200)
         self.qc_input.setStyleSheet(
             "background: #2b2b2b; color: #ccc; border: 1px solid #555;"
         )

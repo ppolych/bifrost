@@ -108,7 +108,7 @@ class BifrostApp(QMainWindow):
         self.tabs.customContextMenuRequested.connect(self.show_tab_context_menu)
         self.splitter.addWidget(self.tabs)
 
-        self.splitter.setSizes([220, 980])
+        self.splitter.setSizes([260, 940])
         self.main_vbox.addWidget(self.splitter)
 
         # MultiExec Bar
@@ -242,7 +242,7 @@ class BifrostApp(QMainWindow):
 
     def on_sidebar_collapsed(self, collapsed):
         if collapsed: self.splitter.setSizes([10, 1190])
-        else: self.splitter.setSizes([220, 980])
+        else: self.splitter.setSizes([260, 940])
 
     _TAB_POSITION_MAP = {
         "Top": QTabWidget.TabPosition.North,

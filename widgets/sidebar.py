@@ -1,7 +1,7 @@
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout, QHeaderView, QInputDialog, QMenu, QMessageBox, QPushButton,
-    QSplitter, QTabWidget, QToolButton, QTreeWidget, QTreeWidgetItem,
+    QSizePolicy, QSplitter, QTabWidget, QToolButton, QTreeWidget, QTreeWidgetItem,
     QVBoxLayout, QWidget,
 )
 from PyQt6.QtGui import QAction
@@ -48,6 +48,8 @@ class Sidebar(QWidget):
         self.session_manager = session_manager
         self.macro_engine = macro_engine
         self.is_collapsed = False
+        self.setMinimumWidth(140)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -90,6 +92,8 @@ class Sidebar(QWidget):
         self.content_splitter = QSplitter(Qt.Orientation.Vertical)
         self.content_splitter.setChildrenCollapsible(True)
         self.content_splitter.setHandleWidth(3)
+        self.content_splitter.setMinimumWidth(130)
+        self.content_splitter.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.main_layout.addWidget(self.content_splitter)
 
         # Tab Widget (top half). Icon-only west strip — the labels were eating
@@ -99,10 +103,14 @@ class Sidebar(QWidget):
         self.tabs.setIconSize(QSize(18, 18))
         self.tabs.tabBar().setExpanding(False)
         self.tabs.tabBar().setUsesScrollButtons(False)
+        self.tabs.setMinimumWidth(130)
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.content_splitter.addWidget(self.tabs)
 
         # 1. Sessions Tab
         self.session_widget = QWidget()
+        self.session_widget.setMinimumWidth(0)
+        self.session_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.session_layout = QVBoxLayout(self.session_widget)
         self.session_layout.setContentsMargins(2, 2, 2, 2)
         self.session_layout.setSpacing(2)
@@ -114,8 +122,9 @@ class Sidebar(QWidget):
         # squeezes the sidebar — the connection name doesn't get cut off
         # silently. Hover tooltips also carry the full session details.
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.tree.header().setStretchLastSection(False)
-        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().setStretchLastSection(True)
+        self.tree.header().setMinimumSectionSize(80)
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tree.itemDoubleClicked.connect(self.on_session_click)
         self.tree.itemExpanded.connect(self._on_item_expanded)
         self.tree.itemCollapsed.connect(self._on_item_collapsed)
@@ -160,6 +169,8 @@ class Sidebar(QWidget):
 
         # 5. Tools Tab
         self.tools_widget = QWidget()
+        self.tools_widget.setMinimumWidth(0)
+        self.tools_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.tools_layout = QVBoxLayout(self.tools_widget)
         self.tools_layout.setContentsMargins(2, 2, 2, 2)
         self.tools_layout.setSpacing(2)
@@ -176,6 +187,8 @@ class Sidebar(QWidget):
 
         # 6. Macros Tab
         self.macro_widget = QWidget()
+        self.macro_widget.setMinimumWidth(0)
+        self.macro_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.macro_layout = QVBoxLayout(self.macro_widget)
         self.macro_layout.setContentsMargins(2, 2, 2, 2)
         self.macro_layout.setSpacing(2)
