@@ -133,6 +133,33 @@ def test_update_session_refuses_name_collision(sm):
         sm.update_session(["Group A"], session, {"name": "beta", "type": "SSH"})
 
 
+# ----- delete -----
+
+def test_delete_session(sm):
+    session = sm.sessions["Group A"][0]
+    assert sm.delete_session(["Group A"], session) is True
+    assert [s["name"] for s in sm.sessions["Group A"]] == ["beta"]
+
+
+def test_delete_session_unknown_returns_false(sm):
+    assert sm.delete_session(["Group A"], {"name": "missing"}) is False
+    assert sm.delete_session(["Group B"], sm.sessions["Group A"][0]) is False
+
+
+def test_delete_folder_at_root(sm):
+    assert sm.delete_folder(["Group A"]) is True
+    assert "Group A" not in sm.sessions
+
+
+def test_delete_folder_nested(sm):
+    assert sm.delete_folder(["Group B", "Sub-1"]) is True
+    assert "Sub-1" not in sm.sessions["Group B"]
+
+
+def test_delete_folder_refuses_root(sm):
+    assert sm.delete_folder([]) is False
+
+
 # ----- duplicate_folder -----
 
 def test_duplicate_folder_inserts_after_original(sm):

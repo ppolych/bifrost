@@ -329,6 +329,9 @@ class Sidebar(QWidget):
             dup = QAction("Duplicate", self)
             dup.triggered.connect(lambda: self._duplicate_session(parent_path, session))
             menu.addAction(dup)
+            delete = QAction("Delete session...", self)
+            delete.triggered.connect(lambda: self._delete_session(parent_path, session))
+            menu.addAction(delete)
             if session.get("type") == "SSH":
                 menu.addSeparator()
                 forget = QAction("Forget saved password / passphrase", self)
@@ -354,6 +357,9 @@ class Sidebar(QWidget):
             dup = QAction("Duplicate group", self)
             dup.triggered.connect(lambda: self._duplicate_folder(folder_path))
             menu.addAction(dup)
+            delete = QAction("Delete group...", self)
+            delete.triggered.connect(lambda: self._delete_folder(folder_path))
+            menu.addAction(delete)
         else:
             return
 
@@ -427,6 +433,40 @@ class Sidebar(QWidget):
         new = self.session_manager.duplicate_session(parent_path, session)
         if new:
             self.refresh_sessions()
+
+    def _delete_folder(self, folder_path):
+        if not folder_path:
+            return
+        name = folder_path[-1]
+        reply = QMessageBox.question(
+            self,
+            "Delete group",
+            f"Delete group '{name}' and everything inside it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self.session_manager.delete_folder(folder_path):
+            self.refresh_sessions()
+        else:
+            QMessageBox.warning(self, "Can't delete group", "Group not found.")
+
+    def _delete_session(self, parent_path, session):
+        name = session.get("name", "session")
+        reply = QMessageBox.question(
+            self,
+            "Delete session",
+            f"Delete session '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self.session_manager.delete_session(parent_path, session):
+            self.refresh_sessions()
+        else:
+            QMessageBox.warning(self, "Can't delete session", "Session not found.")
 
     def _toggle_favorite(self, item):
         session = item.data(0, self.SESSION_ROLE)

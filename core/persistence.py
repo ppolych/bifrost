@@ -220,6 +220,35 @@ class SessionManager:
         self.save()
         return True
 
+    def delete_folder(self, path) -> bool:
+        """Delete a folder/group at `path`, including all nested contents."""
+        if not path:
+            return False
+        if not path[:-1]:
+            parent = self.sessions
+        else:
+            container, key = self._resolve_container(path[:-1])
+            if container is None:
+                return False
+            parent = container[key]
+        if not isinstance(parent, dict):
+            return False
+        old = path[-1]
+        if old not in parent:
+            return False
+        del parent[old]
+        self.save()
+        return True
+
+    def delete_session(self, parent_path, session: dict) -> bool:
+        """Delete a session dict from the list at `parent_path`."""
+        container = self._list_at(parent_path)
+        if container is None or session not in container:
+            return False
+        container.remove(session)
+        self.save()
+        return True
+
     def duplicate_folder(self, path) -> str | None:
         """Deep-copy the folder at `path` into the same parent with a
         ‘(copy)’-suffixed name. Returns the new name, or None on failure."""
