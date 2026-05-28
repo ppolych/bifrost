@@ -8,10 +8,20 @@ from widgets.search_bar import SearchBar
 class TerminalContainer(QWidget):
     detach_requested = pyqtSignal(object)
 
-    def __init__(self, name, command=None, key_callback=None, settings=None, backend=None):
+    def __init__(
+        self,
+        name,
+        command=None,
+        key_callback=None,
+        settings=None,
+        backend=None,
+        ssh_session=None,
+    ):
         super().__init__()
         self.name = name
         self.settings = settings
+        self.command = command
+        self.ssh_session = dict(ssh_session) if isinstance(ssh_session, dict) else None
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)

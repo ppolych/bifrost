@@ -173,6 +173,20 @@ def test_ssh_browser_emits_focus_on_double_click(qapp):
     assert received == [7]
 
 
+def test_ssh_browser_emits_reconnect_for_selection(qapp):
+    from widgets.ssh_browser import ActiveConnection, SshBrowser
+
+    b = SshBrowser()
+    b.update_from_tabs([
+        ActiveConnection(tab_index=4, host="h", user="u", port=22, status="closed"),
+    ])
+    received: list[int] = []
+    b.reconnect_tab.connect(received.append)
+    b.tree.setCurrentItem(b.tree.topLevelItem(0))
+    b._reconnect_selected()
+    assert received == [4]
+
+
 # ---------------------------------------------------------------------------
 # CredentialManager
 # ---------------------------------------------------------------------------

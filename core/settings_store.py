@@ -67,6 +67,9 @@ def default_settings() -> dict:
         "tab_position": "Top",          # Top | Bottom | Left | Right
         "restore_window_geometry": True,
         "window_geometry": "",          # opaque hex blob from QMainWindow.saveGeometry()
+        "main_splitter_sizes": [],       # sidebar / terminal split
+        "sidebar_splitter_sizes": [],    # sidebar tabs / SFTP split
+        "last_sidebar_tab": 0,
 
         # SSH defaults
         "ssh_default_user": "",

@@ -88,6 +88,7 @@ class BifrostApp(QMainWindow):
         # self.tabs is created later in __init__; defer the lookup with a lambda.
         self.sidebar.ssh_browser.focus_tab.connect(lambda i: self.tabs.setCurrentIndex(i))
         self.sidebar.ssh_browser.disconnect_tab.connect(self._disconnect_tab)
+        self.sidebar.ssh_browser.reconnect_tab.connect(self._reconnect_tab)
         self.sidebar.cred_widget.refresh_requested.connect(self._refresh_credentials_view)
         self.sidebar.cred_widget.forget_requested.connect(self.on_forget_credentials)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
@@ -111,6 +112,10 @@ class BifrostApp(QMainWindow):
         self.splitter.addWidget(self.tabs)
 
         self.splitter.setSizes([260, 940])
+        self._restore_layout_state()
+        self.splitter.splitterMoved.connect(lambda *_: self._remember_layout_state())
+        self.sidebar.content_splitter.splitterMoved.connect(lambda *_: self._remember_layout_state())
+        self.sidebar.tabs.currentChanged.connect(lambda *_: self._remember_layout_state())
         self.main_vbox.addWidget(self.splitter)
 
         # MultiExec Bar
@@ -243,8 +248,42 @@ class BifrostApp(QMainWindow):
         if color.isValid(): self.tabs.tabBar().setTabTextColor(index, color)
 
     def on_sidebar_collapsed(self, collapsed):
-        if collapsed: self.splitter.setSizes([10, 1190])
-        else: self.splitter.setSizes([260, 940])
+        if collapsed:
+            self.splitter.setSizes([10, 1190])
+        else:
+            sizes = self.settings.get("main_splitter_sizes") or []
+            if isinstance(sizes, list) and len(sizes) == 2 and sizes[0] > 20:
+                self.splitter.setSizes(sizes)
+            else:
+                self.splitter.setSizes([260, 940])
+            self._remember_layout_state()
+
+    def _restore_layout_state(self):
+        if self.settings.get("restore_window_geometry", True):
+            main_sizes = self.settings.get("main_splitter_sizes") or []
+            if isinstance(main_sizes, list) and len(main_sizes) == 2 and all(isinstance(v, int) for v in main_sizes):
+                self.splitter.setSizes(main_sizes)
+            sidebar_sizes = self.settings.get("sidebar_splitter_sizes") or []
+            if (
+                isinstance(sidebar_sizes, list)
+                and len(sidebar_sizes) == 2
+                and all(isinstance(v, int) for v in sidebar_sizes)
+            ):
+                self.sidebar.content_splitter.setSizes(sidebar_sizes)
+            try:
+                self.sidebar.tabs.setCurrentIndex(int(self.settings.get("last_sidebar_tab", 0) or 0))
+            except (TypeError, ValueError):
+                self.sidebar.tabs.setCurrentIndex(0)
+
+    def _remember_layout_state(self):
+        if not self.settings.get("restore_window_geometry", True):
+            return
+        main_sizes = self.splitter.sizes()
+        if len(main_sizes) == 2 and main_sizes[0] > 20:
+            self.settings["main_splitter_sizes"] = main_sizes
+        self.settings["sidebar_splitter_sizes"] = self.sidebar.content_splitter.sizes()
+        self.settings["last_sidebar_tab"] = self.sidebar.tabs.currentIndex()
+        save_settings(self.settings)
 
     _TAB_POSITION_MAP = {
         "Top": QTabWidget.TabPosition.North,
@@ -605,6 +644,7 @@ class BifrostApp(QMainWindow):
         ssh_session: dict | None = None,
     ):
         backend = None
+        session = None
         prefix = "🐚 "
 
         if kind == "WSL" or (kind is None and "WSL" in name):
@@ -615,17 +655,36 @@ class BifrostApp(QMainWindow):
             backend = self._build_ssh_backend(name, session)
             if backend is None:
                 return  # user cancelled the password prompt
+            if session is None:
+                session = self._session_from_backend(name, backend)
             prefix = "🌐 "
 
         if name != "Local Shell":
             self.session_manager.add_to_recents(name)
 
         container = TerminalContainer(
-            name, command, self.on_terminal_key, settings=self.settings, backend=backend,
+            name,
+            command,
+            self.on_terminal_key,
+            settings=self.settings,
+            backend=backend,
+            ssh_session=session if backend is not None else None,
         )
         container.detach_requested.connect(self.detach_terminal)
         self.tabs.addTab(container, prefix + name)
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
+
+    def _session_from_backend(self, name: str, backend: ParamikoBackend) -> dict:
+        creds = backend.creds
+        return {
+            "name": name,
+            "type": "SSH",
+            "host": creds.host,
+            "user": creds.username,
+            "port": creds.port,
+            "auth": creds.auth,
+            "key_path": creds.key_filename,
+        }
 
     def _build_ssh_backend(self, name: str, session: dict | None) -> ParamikoBackend | None:
         if not session or "host" not in session:
@@ -869,6 +928,11 @@ class BifrostApp(QMainWindow):
             try:
                 blob = bytes(self.saveGeometry()).hex()
                 self.settings["window_geometry"] = blob
+                main_sizes = self.splitter.sizes()
+                if len(main_sizes) == 2 and main_sizes[0] > 20:
+                    self.settings["main_splitter_sizes"] = main_sizes
+                self.settings["sidebar_splitter_sizes"] = self.sidebar.content_splitter.sizes()
+                self.settings["last_sidebar_tab"] = self.sidebar.tabs.currentIndex()
                 save_settings(self.settings)
             except Exception:
                 log.debug("saveGeometry failed", exc_info=True)
@@ -966,6 +1030,30 @@ class BifrostApp(QMainWindow):
         self._refresh_ssh_browser()
         self.status_bar.showMessage(
             f"Disconnected {backend.creds.username}@{backend.creds.host}", 4000,
+        )
+
+    def _reconnect_tab(self, tab_index: int):
+        if tab_index < 0 or tab_index >= self.tabs.count():
+            return
+        widget = self.tabs.widget(tab_index)
+        if not isinstance(widget, TerminalContainer):
+            return
+        backend = self._ssh_backend_of(widget)
+        session = widget.ssh_session or (
+            self._session_from_backend(widget.name, backend) if backend is not None else None
+        )
+        if session is None:
+            self.status_bar.showMessage("No SSH session details available for reconnect", 4000)
+            return
+        if backend is not None:
+            backend.close()
+        old_name = self.tabs.tabText(tab_index)
+        self.tabs.removeTab(tab_index)
+        widget.deleteLater()
+        self.new_terminal_tab(session.get("name") or old_name, ssh_session=session)
+        self._refresh_ssh_browser()
+        self.status_bar.showMessage(
+            f"Reconnecting {session.get('user', '')}@{session.get('host', '')}", 4000,
         )
 
     def _ssh_backend_of(self, widget) -> ParamikoBackend | None:

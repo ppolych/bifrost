@@ -12,6 +12,7 @@ def test_default_settings_has_all_new_keys():
         "cursor_color", "selection_bg", "selection_fg", "bold_is_bright",
         "strip_newlines_on_paste", "default_editor_command",
         "restore_window_geometry", "window_geometry",
+        "main_splitter_sizes", "sidebar_splitter_sizes", "last_sidebar_tab",
         "ssh_keepalive_interval",
     }
     missing = expected - s.keys()
