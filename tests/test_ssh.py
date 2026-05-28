@@ -56,6 +56,36 @@ def test_credentials_from_session_with_advanced_ssh_fields():
     assert creds.tunnels == ["L 127.0.0.1:5432 db:5432"]
 
 
+def test_parse_local_remote_and_dynamic_tunnels():
+    from core.ssh_backend import parse_tunnel_spec
+
+    local = parse_tunnel_spec("L 127.0.0.1:15432 db.internal:5432")
+    assert local.kind == "L"
+    assert local.bind_host == "127.0.0.1"
+    assert local.bind_port == 15432
+    assert local.target_host == "db.internal"
+    assert local.target_port == 5432
+
+    remote = parse_tunnel_spec("R 0.0.0.0:8080 127.0.0.1:80")
+    assert remote.kind == "R"
+    assert remote.bind_host == "0.0.0.0"
+    assert remote.target_host == "127.0.0.1"
+
+    dynamic = parse_tunnel_spec("D 1080")
+    assert dynamic.kind == "D"
+    assert dynamic.bind_host == "127.0.0.1"
+    assert dynamic.bind_port == 1080
+
+
+def test_parse_tunnel_rejects_bad_shape():
+    from core.ssh_backend import parse_tunnel_spec
+
+    with pytest.raises(ValueError):
+        parse_tunnel_spec("L 127.0.0.1:15432")
+    with pytest.raises(ValueError):
+        parse_tunnel_spec("X 127.0.0.1:15432 db:5432")
+
+
 def test_credentials_port_coercion_handles_empty():
     from core.ssh_backend import SshCredentials
 

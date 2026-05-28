@@ -42,6 +42,7 @@ from core.network_tools import scan_ports, scan_ip_range
 from core.platform_utils import config_dir, default_monospace_font, migrate_legacy_config
 from core.settings_store import load_settings, save_settings
 from core.ssh_backend import ParamikoBackend, SshCredentials
+from core.workspaces import WorkspaceManager
 from widgets.credential_prompt import CredentialPrompt
 
 class BifrostApp(QMainWindow):
@@ -56,11 +57,13 @@ class BifrostApp(QMainWindow):
         
         self.apply_global_visuals()
         self.session_manager = SessionManager()
+        self.workspace_manager = WorkspaceManager()
         self.macro_engine = MacroEngine()
         self.host_key_prompter = HostKeyPrompter(self)
         self.setStyleSheet(get_dark_theme())
         self.detached_windows = []
         self.pinned_tabs = set()
+        self._setup_workspace_menu()
         
         # Toolbar
         self.toolbar = MainToolBar(self)
@@ -198,6 +201,20 @@ class BifrostApp(QMainWindow):
         except OSError:
             log.debug("local IP detection failed", exc_info=True)
             return "127.0.0.1"
+
+    def _setup_workspace_menu(self):
+        menu = self.menuBar().addMenu("Workspaces")
+        save_act = QAction("Save current SSH tabs...", self)
+        save_act.triggered.connect(self.save_current_workspace)
+        menu.addAction(save_act)
+
+        open_act = QAction("Open workspace...", self)
+        open_act.triggered.connect(self.open_workspace_profile)
+        menu.addAction(open_act)
+
+        delete_act = QAction("Delete workspace...", self)
+        delete_act.triggered.connect(self.delete_workspace_profile)
+        menu.addAction(delete_act)
 
     def broadcast_command(self):
         cmd = self.multi_exec_input.text() + "\r"
@@ -692,6 +709,86 @@ class BifrostApp(QMainWindow):
             self.new_terminal_tab(name, command=[cmd] if isinstance(cmd, str) else cmd)
         else:
             self.new_terminal_tab(name)
+
+    def save_current_workspace(self):
+        sessions = self._current_workspace_sessions()
+        if not sessions:
+            QMessageBox.information(
+                self,
+                "Save workspace",
+                "There are no SSH tabs to save in this workspace.",
+            )
+            return
+        name, ok = QInputDialog.getText(self, "Save workspace", "Workspace name:")
+        if not ok or not name.strip():
+            return
+        try:
+            self.workspace_manager.upsert(name, sessions)
+        except ValueError as e:
+            QMessageBox.warning(self, "Save workspace failed", str(e))
+            return
+        self.status_bar.showMessage(
+            f"Saved workspace {name.strip()} with {len(sessions)} session(s)", 5000,
+        )
+
+    def open_workspace_profile(self):
+        names = self.workspace_manager.names()
+        if not names:
+            QMessageBox.information(self, "Open workspace", "No workspace profiles saved yet.")
+            return
+        name, ok = QInputDialog.getItem(
+            self, "Open workspace", "Workspace:", names, 0, False,
+        )
+        if not ok or not name:
+            return
+        sessions = self.workspace_manager.get(name)
+        if not sessions:
+            QMessageBox.warning(self, "Open workspace", "Workspace is empty or missing.")
+            return
+        for session in sessions:
+            self.on_session_activated(session)
+        self.status_bar.showMessage(
+            f"Opened workspace {name} ({len(sessions)} session(s))", 5000,
+        )
+
+    def delete_workspace_profile(self):
+        names = self.workspace_manager.names()
+        if not names:
+            QMessageBox.information(self, "Delete workspace", "No workspace profiles saved yet.")
+            return
+        name, ok = QInputDialog.getItem(
+            self, "Delete workspace", "Workspace:", names, 0, False,
+        )
+        if not ok or not name:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Delete workspace",
+            f"Delete workspace '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self.workspace_manager.delete(name):
+            self.status_bar.showMessage(f"Deleted workspace {name}", 5000)
+
+    def _current_workspace_sessions(self) -> list[dict]:
+        sessions: list[dict] = []
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if not isinstance(widget, TerminalContainer):
+                continue
+            backend = self._ssh_backend_of(widget)
+            if widget.ssh_session:
+                session = dict(widget.ssh_session)
+            elif backend is not None:
+                session = self._session_from_backend(widget.name, backend)
+            else:
+                continue
+            if session.get("type") == "SSH" or session.get("host"):
+                sessions.append(session)
+        return sessions
 
     def on_favorite_toggled(self, session: dict, _new_state: bool):
         # The session dict is the same object the sidebar mutated, so we only
