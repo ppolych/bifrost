@@ -186,7 +186,7 @@ class SettingsDialog(QDialog):
         layout.addRow(self.blink_cb)
 
         # Behavior
-        self.rc_paste_cb = QCheckBox("Right-click pastes from clipboard (copies first if a selection exists)")
+        self.rc_paste_cb = QCheckBox("Show terminal context menu on right-click")
         self.rc_paste_cb.setChecked(self.settings.get("right_click_paste", True))
         layout.addRow(self.rc_paste_cb)
 

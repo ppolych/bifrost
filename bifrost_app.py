@@ -28,6 +28,7 @@ from widgets.session_dialog import SessionDialog
 from widgets.settings_dialog import SettingsDialog
 from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
+from widgets.remote_monitor import RemoteMonitorWidget
 from core.styles import get_dark_theme
 from core import credentials, ip_tools, keygen, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
@@ -146,6 +147,8 @@ class BifrostApp(QMainWindow):
         # Status Bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+        self.remote_monitor = RemoteMonitorWidget(self)
+        self.status_bar.addWidget(self.remote_monitor, 1)
         self.ip_label = QLabel(f"Local IP: {self.get_local_ip()}")
         self.status_bar.addPermanentWidget(self.ip_label)
         self.cpu_label = QLabel("CPU: 0%")
@@ -1026,10 +1029,12 @@ class BifrostApp(QMainWindow):
         # Keep the SSH browser pane in sync as tabs come and go.
         self._refresh_ssh_browser()
         if index < 0:
+            self.remote_monitor.set_backend(None)
             return
         name = self.tabs.tabText(index)
         widget = self.tabs.widget(index)
         ssh_backend = self._ssh_backend_of(widget)
+        self.remote_monitor.set_backend(ssh_backend)
 
         if ssh_backend is not None:
             # MobaXterm-style: SFTP pane is always visible alongside the

@@ -43,6 +43,7 @@ class TerminalContainer(QWidget):
         if self.key_callback:
             term.key_pressed.connect(self.key_callback)
         term.detach_requested.connect(lambda: self.detach_requested.emit(self))
+        term.search_requested.connect(self.toggle_search)
         parent_splitter.addWidget(term)
         return term
 

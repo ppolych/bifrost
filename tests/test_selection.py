@@ -100,6 +100,19 @@ def test_copy_selection_returns_false_when_empty(term):
     assert term._copy_selection() is False
 
 
+def test_select_visible_selects_full_viewport(term):
+    term._select_visible()
+    assert term._selection == (0, 0, term._rows - 1, term._cols - 1)
+
+
+def test_copy_visible_writes_visible_screen(term, qapp):
+    from PyQt6.QtGui import QGuiApplication
+
+    _feed(term, "visible line")
+    term._copy_visible()
+    assert QGuiApplication.clipboard().text().splitlines()[0] == "visible line"
+
+
 def test_pos_to_cell_clamps_to_viewport(term):
     from PyQt6.QtCore import QPoint
 

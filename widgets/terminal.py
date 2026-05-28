@@ -86,6 +86,7 @@ class TerminalWidget(QAbstractScrollArea):
 
     key_pressed = pyqtSignal(str)
     detach_requested = pyqtSignal()
+    search_requested = pyqtSignal()
 
     DEFAULT_COLS = 80
     DEFAULT_ROWS = 24
@@ -501,6 +502,10 @@ class TerminalWidget(QAbstractScrollArea):
         QGuiApplication.clipboard().setText(text)
         return True
 
+    def _select_visible(self) -> None:
+        self._selection = (0, 0, self._rows - 1, self._cols - 1)
+        self.viewport().update()
+
     def _update_scrollbar(self):
         # HistoryScreen exposes history.top/bottom as deques of lines.
         # We expose a coarse scrollbar so the user sees that scrollback exists.
@@ -668,36 +673,65 @@ class TerminalWidget(QAbstractScrollArea):
     # ----- context menu / clipboard -----
 
     def _show_context_menu(self, position):
-        # MobaXterm-style: right-click pastes when there is no selection;
-        # when there is a selection, right-click copies it. Falls through to
-        # the menu only when right_click_paste is off.
-        if self.settings.get("right_click_paste"):
-            if self.has_selection():
-                self._copy_selection()
-                self.clear_selection()
-            else:
-                self._paste_from_clipboard()
-            return
         menu = QMenu(self)
-        copy_sel = QAction("Copy selection", self, triggered=self._copy_selection)
-        copy_sel.setEnabled(self.has_selection())
+        has_selection = self.has_selection()
+        has_clipboard = bool(QApplication.clipboard().text())
+
+        copy_sel = QAction("Copy", self, triggered=self._copy_selection)
+        copy_sel.setShortcut("Ctrl+Shift+C")
+        copy_sel.setEnabled(has_selection)
         menu.addAction(copy_sel)
-        menu.addAction(QAction("Copy visible", self, triggered=self._copy_visible))
-        menu.addAction(QAction("Paste", self, triggered=self._paste_from_clipboard))
+
+        paste = QAction("Paste", self, triggered=self._paste_from_clipboard)
+        paste.setShortcut("Ctrl+Shift+V")
+        paste.setEnabled(has_clipboard)
+        menu.addAction(paste)
+
         menu.addSeparator()
-        menu.addAction(QAction("Detach Terminal", self, triggered=self.detach_requested.emit))
+        menu.addAction(QAction("Copy visible terminal", self, triggered=self._copy_visible))
+        menu.addAction(QAction("Copy visible + scrollback", self, triggered=self._copy_scrollback))
+        menu.addAction(QAction("Select visible terminal", self, triggered=self._select_visible))
+        clear_sel = QAction("Clear selection", self, triggered=self.clear_selection)
+        clear_sel.setEnabled(has_selection)
+        menu.addAction(clear_sel)
+
         menu.addSeparator()
-        menu.addAction(QAction("Clear Scrollback", self, triggered=self._clear_scrollback))
+        menu.addAction(QAction("Find...", self, triggered=self.search_requested.emit))
+        menu.addAction(QAction("Send Ctrl+C", self, triggered=lambda: self.write_to_backend("\x03")))
+
+        menu.addSeparator()
+        menu.addAction(QAction("Detach terminal", self, triggered=self.detach_requested.emit))
+        menu.addAction(QAction("Clear scrollback", self, triggered=self._clear_scrollback))
         menu.exec(self.viewport().mapToGlobal(position))
 
-    def _copy_visible(self):
-        lines = []
+    def _line_text(self, line) -> str:
+        chars = []
+        for c in range(self._cols):
+            try:
+                cell = line[c]
+            except (KeyError, IndexError, TypeError):
+                chars.append(" ")
+                continue
+            chars.append(getattr(cell, "data", None) or " ")
+        return "".join(chars).rstrip()
+
+    def _screen_lines(self) -> list[str]:
+        lines: list[str] = []
         for row in range(self._rows):
-            line = self.screen.buffer[row]
-            text = "".join(line[c].data or " " for c in range(self._cols))
-            lines.append(text.rstrip())
-        clipboard = QGuiApplication.clipboard()
-        clipboard.setText("\n".join(lines).rstrip())
+            lines.append(self._line_text(self.screen.buffer[row]))
+        return lines
+
+    def _copy_visible(self):
+        QGuiApplication.clipboard().setText("\n".join(self._screen_lines()).rstrip())
+
+    def _copy_scrollback(self):
+        lines: list[str] = []
+        for line in list(self.screen.history.top):
+            lines.append(self._line_text(line))
+        lines.extend(self._screen_lines())
+        for line in list(self.screen.history.bottom):
+            lines.append(self._line_text(line))
+        QGuiApplication.clipboard().setText("\n".join(lines).rstrip())
 
     def _paste_from_clipboard(self):
         text = QApplication.clipboard().text()
