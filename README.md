@@ -81,12 +81,6 @@ Per-session shell transcripts (when `auto_log` is on) go to
 
 JSON writes are atomic (tempfile + `os.replace`).
 
-### Legacy migration
-
-The project was previously named *Asbru*. On first run, the contents of the
-old `asbru` config directory are copied into the new `bifrost` directory if
-the new directory is empty. The check is idempotent and runs on every
-startup.
 
 ## Tests
 
