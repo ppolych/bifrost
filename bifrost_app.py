@@ -1,3 +1,4 @@
+import configparser
 import logging
 import os
 import socket
@@ -26,6 +27,7 @@ from core import credentials, ip_tools, keygen, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
 from core.logging_setup import configure_logging
+from core.mobaxterm_import import parse_mobaxterm_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
 from core.network_tools import scan_ports, scan_ip_range
@@ -262,6 +264,7 @@ class BifrostApp(QMainWindow):
 
     def open_settings_dialog(self):
         dialog = SettingsDialog(self, current_settings=self.settings)
+        dialog.import_mobaxterm_requested.connect(self.import_mobaxterm_sessions)
         if dialog.exec():
             self.settings = dialog.get_settings()
             save_settings(self.settings)
@@ -275,6 +278,39 @@ class BifrostApp(QMainWindow):
                         term.settings = self.settings
                         term.apply_settings()
             self.status_bar.showMessage("Settings applied.")
+
+    def import_mobaxterm_sessions(self):
+        parent = QApplication.activeModalWidget() or self
+        path, _ = QFileDialog.getOpenFileName(
+            parent, "Import MobaXterm sessions", "",
+            "MobaXterm sessions (*.mxtsessions *.moba *.ini);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            result = parse_mobaxterm_file(path)
+        except (OSError, UnicodeError, configparser.Error) as e:
+            QMessageBox.warning(parent, "MobaXterm import failed", str(e))
+            return
+        if result.imported == 0:
+            QMessageBox.information(
+                parent,
+                "No sessions imported",
+                "No supported SSH sessions were found in that MobaXterm file.",
+            )
+            return
+        imported_group = ""
+        for group_name, data in result.tree.items():
+            imported_group = self.session_manager.import_group(group_name, data)
+        self.sidebar.refresh_sessions()
+        self._refresh_credentials_view()
+        message = f"Imported {result.imported} MobaXterm session"
+        if result.imported != 1:
+            message += "s"
+        message += f" into {imported_group}"
+        if result.skipped:
+            message += f" ({result.skipped} unsupported skipped)"
+        self.status_bar.showMessage(message, 6000)
 
     def show_dashboard(self):
         dashboard = Dashboard(recent_sessions=self.session_manager.recent_sessions)

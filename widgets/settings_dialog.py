@@ -6,7 +6,7 @@ Every option here is wired to actual behavior — see `BifrostApp.open_settings_
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -44,6 +44,8 @@ THEMES = ["Dark (MobaXterm style)", "Light", "Solarized", "High Contrast"]
 
 
 class SettingsDialog(QDialog):
+    import_mobaxterm_requested = pyqtSignal()
+
     def __init__(self, parent=None, current_settings=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
@@ -94,6 +96,10 @@ class SettingsDialog(QDialog):
         self.confirm_quit_cb = QCheckBox("Confirm on quit when sessions are still active")
         self.confirm_quit_cb.setChecked(self.settings.get("confirm_quit_with_sessions", True))
         layout.addRow(self.confirm_quit_cb)
+
+        import_moba_btn = QPushButton("Import MobaXterm sessions...")
+        import_moba_btn.clicked.connect(self.import_mobaxterm_requested.emit)
+        layout.addRow("Connections:", import_moba_btn)
 
         return page
 

@@ -69,6 +69,13 @@ class SessionManager:
         self.sessions.update(merged)
         self.save()
 
+    def import_group(self, group_name: str, data) -> str:
+        """Import a top-level group without overwriting an existing group."""
+        unique = _uniquify_key(self.sessions, group_name)
+        self.sessions[unique] = data
+        self.save()
+        return unique
+
     def find_by_name(self, name: str) -> dict | None:
         """Walk the nested folder/list structure and return the first session matching `name`."""
         return _walk_for_name(self.sessions, name)
