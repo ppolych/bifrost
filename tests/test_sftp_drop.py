@@ -157,6 +157,17 @@ def test_cleanup_transfer_chains_queue(browser, monkeypatch):
     assert browser._upload_queue == [("/b", "/r/b")]
 
 
+def test_cleanup_transfer_hides_progress_when_queue_empty(browser):
+    browser._begin_transfer_progress("download", "C:/tmp/report.log", "/var/log/report.log")
+    browser._transfer = MagicMock()
+
+    browser._cleanup_transfer()
+
+    assert browser.transfer_panel.isHidden()
+    assert browser.progress.value() == 0
+    assert browser.transfer_status.text() == ""
+
+
 def test_transfer_progress_shows_upload_bytes(browser):
     browser._begin_transfer_progress("upload", "C:/tmp/archive.tar", "/remote/archive.tar")
     browser._on_transfer_progress(512, 2048)
@@ -176,6 +187,9 @@ def test_transfer_progress_shows_download_name_and_completion(browser):
     assert browser.progress.value() == 100
     assert browser.progress.format() == "100%"
     assert browser.transfer_status.text() == "Downloaded report.log"
+
+    browser._cleanup_transfer()
+    assert browser.transfer_panel.isHidden()
 
 
 def test_detach_hides_transfer_progress(browser):

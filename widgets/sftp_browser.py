@@ -739,6 +739,7 @@ class SftpBrowser(QWidget):
     def _cleanup_transfer(self) -> None:
         self._set_buttons_enabled(True)
         self._transfer = None
+        self._reset_transfer_progress()
         # Chain into the next queued upload (drag-and-drop with multiple files).
         if self._upload_queue and self.sftp is not None:
             local, remote = self._upload_queue.pop(0)

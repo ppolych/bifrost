@@ -54,6 +54,12 @@ def test_sftp_pane_starts_collapsed(sidebar):
     assert sizes[1] == 0
 
 
+def test_session_tree_starts_collapsed(sidebar):
+    for i in range(sidebar.tree.topLevelItemCount()):
+        item = sidebar.tree.topLevelItem(i)
+        assert not item.isExpanded()
+
+
 def test_show_and_hide_sftp_pane(sidebar):
     sidebar.show_sftp_pane(sizes=(400, 300))
     assert sidebar.content_splitter.sizes()[1] > 0

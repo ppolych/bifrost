@@ -258,14 +258,13 @@ class Sidebar(QWidget):
     def refresh_sessions(self):
         self.tree.clear()
         self._populate_tree(self.session_manager.sessions, self.tree, [])
-        self.tree.expandAll()
 
     def _populate_tree(self, data, parent, path):
         if isinstance(data, dict):
             for key, value in data.items():
                 item_path = path + [key]
                 item = QTreeWidgetItem(parent, [key])
-                item.setIcon(0, folder_icon(is_open=True))
+                item.setIcon(0, folder_icon(is_open=False))
                 item.setData(0, self.FOLDER_ROLE, True)
                 item.setData(0, self.PATH_ROLE, item_path)
                 self._populate_tree(value, item, item_path)
