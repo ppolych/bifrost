@@ -120,6 +120,19 @@ def test_rename_session_refuses_on_collision(sm):
         sm.rename_session(["Group A"], session, "beta")
 
 
+def test_update_session_preserves_position(sm):
+    session = sm.sessions["Group A"][0]
+    assert sm.update_session(["Group A"], session, {"name": "alpha-new", "type": "SSH", "host": "h"})
+    assert sm.sessions["Group A"][0]["name"] == "alpha-new"
+    assert sm.sessions["Group A"][0]["host"] == "h"
+
+
+def test_update_session_refuses_name_collision(sm):
+    session = sm.sessions["Group A"][0]
+    with pytest.raises(ValueError):
+        sm.update_session(["Group A"], session, {"name": "beta", "type": "SSH"})
+
+
 # ----- duplicate_folder -----
 
 def test_duplicate_folder_inserts_after_original(sm):

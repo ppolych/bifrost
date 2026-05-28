@@ -1,11 +1,17 @@
 import configparser
+import importlib.metadata
 import logging
 import os
+import platform
+import shutil
 import socket
+import subprocess
 import sys
 
 import psutil
-from PyQt6.QtCore import Qt, QTimer
+import paramiko
+import pyte
+from PyQt6.QtCore import QT_VERSION_STR, Qt, QTimer
 from PyQt6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QColorDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
@@ -26,12 +32,12 @@ from core.styles import get_dark_theme
 from core import credentials, ip_tools, keygen, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
-from core.logging_setup import configure_logging
+from core.logging_setup import _log_path, configure_logging
 from core.mobaxterm_import import parse_mobaxterm_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
 from core.network_tools import scan_ports, scan_ip_range
-from core.platform_utils import default_monospace_font, migrate_legacy_config
+from core.platform_utils import config_dir, default_monospace_font, migrate_legacy_config
 from core.settings_store import load_settings, save_settings
 from core.ssh_backend import ParamikoBackend, SshCredentials
 from widgets.credential_prompt import CredentialPrompt
@@ -63,6 +69,7 @@ class BifrostApp(QMainWindow):
         self.toolbar.quick_connect_triggered.connect(self.on_quick_connect)
         self.toolbar.wol_act.triggered.connect(self.on_wol_dialog)
         self.toolbar.split_triggered.connect(self.on_split_requested)
+        self.toolbar.diagnostics_requested.connect(self.show_diagnostics)
         self.toolbar.settings_act.triggered.connect(self.open_settings_dialog)
         self.addToolBar(self.toolbar)
 
@@ -81,6 +88,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.forget_credentials.connect(self.on_forget_credentials)
         self.sidebar.wake_on_lan.connect(self.on_wake_on_lan)
         self.sidebar.new_session_requested.connect(self.open_session_dialog)
+        self.sidebar.edit_session_requested.connect(self.edit_session)
         self.sidebar.add_btn.clicked.connect(self.open_session_dialog)
         self.sidebar.export_btn.clicked.connect(self.export_sessions)
         self.sidebar.import_btn.clicked.connect(self.import_sessions)
@@ -317,6 +325,42 @@ class BifrostApp(QMainWindow):
                         term.settings = self.settings
                         term.apply_settings()
             self.status_bar.showMessage("Settings applied.")
+
+    def show_diagnostics(self):
+        ssh_agent = "unavailable"
+        ssh_add = shutil.which("ssh-add")
+        if ssh_add:
+            try:
+                proc = subprocess.run(
+                    [ssh_add, "-l"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    check=False,
+                )
+                ssh_agent = "available" if proc.returncode == 0 else "no identities"
+            except (OSError, subprocess.SubprocessError):
+                ssh_agent = "error"
+
+        try:
+            app_version = importlib.metadata.version("bifrost-cm")
+        except importlib.metadata.PackageNotFoundError:
+            app_version = "development checkout"
+
+        lines = [
+            f"Bifrost: {app_version}",
+            f"Python: {platform.python_version()} ({platform.system()} {platform.release()})",
+            f"Qt: {QT_VERSION_STR}",
+            f"Paramiko: {paramiko.__version__}",
+            f"pyte: {getattr(pyte, '__version__', 'unknown')}",
+            "",
+            f"Config dir: {config_dir()}",
+            f"Log file: {_log_path()}",
+            f"Keyring available: {'yes' if credentials.is_available() else 'no'}",
+            f"SSH agent: {ssh_agent}",
+            f"Git: {shutil.which('git') or 'not found'}",
+        ]
+        QMessageBox.information(self, "Bifrost diagnostics", "\n".join(lines))
 
     def import_mobaxterm_sessions(self):
         parent = QApplication.activeModalWidget() or self
@@ -892,6 +936,23 @@ class BifrostApp(QMainWindow):
             else:
                 self.new_terminal_tab(data["name"])
 
+    def edit_session(self, parent_path: list, session: dict):
+        dialog = SessionDialog(self, session=session)
+        if not dialog.exec():
+            return
+        data = dialog.get_data()
+        try:
+            ok = self.session_manager.update_session(parent_path, session, data)
+        except ValueError as e:
+            QMessageBox.warning(self, "Can't update session", str(e))
+            return
+        if not ok:
+            QMessageBox.warning(self, "Can't update session", "Session was not found.")
+            return
+        self.sidebar.refresh_sessions()
+        self._refresh_credentials_view()
+        self.status_bar.showMessage(f"Updated session {data['name']}", 4000)
+
     def close_tab(self, index):
         if index in self.pinned_tabs:
             QMessageBox.information(self, "Tab Pinned", "This tab is pinned and cannot be closed. Unpin it first.")
@@ -951,7 +1012,7 @@ class BifrostApp(QMainWindow):
             )
             if live > 0:
                 reply = QMessageBox.question(
-                    self, "Quit asbru",
+                    self, "Quit Bifrost",
                     f"{live} session{'s' if live != 1 else ''} still active. Quit anyway?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No,
@@ -1073,6 +1134,7 @@ class BifrostApp(QMainWindow):
     def _attach_sftp_when_ready(self, backend: ParamikoBackend):
         """Poll until the SSH connection is ready, then attach the SFTP browser."""
         if backend.wait_ready(timeout=0):
+            self._refresh_ssh_browser()
             if backend.client is not None:
                 self.sidebar.sftp_widget.attach(backend.client)
             return
@@ -1083,6 +1145,7 @@ class BifrostApp(QMainWindow):
             if self._ssh_backend_of(self.tabs.currentWidget()) is not backend:
                 return  # user switched tabs; stop polling
             if backend.wait_ready(timeout=0):
+                self._refresh_ssh_browser()
                 if backend.client is not None:
                     self.sidebar.sftp_widget.attach(backend.client)
                 return

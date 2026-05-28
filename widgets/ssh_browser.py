@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -81,6 +82,15 @@ class SshBrowser(QWidget):
         for c in connections:
             item = QTreeWidgetItem(self.tree, [c.host, c.user, str(c.port), c.status])
             item.setData(0, Qt.ItemDataRole.UserRole, c.tab_index)
+            color = {
+                "connected": QColor("#6fcf97"),
+                "connecting": QColor("#f2c94c"),
+                "failed": QColor("#eb5757"),
+                "closed": QColor("#9aa0a6"),
+            }.get(c.status, QColor("#cccccc"))
+            for col in range(4):
+                item.setForeground(col, color)
+            item.setToolTip(3, f"SSH session is {c.status}")
 
     def _selected_tab_index(self) -> Optional[int]:
         item = self.tree.currentItem()

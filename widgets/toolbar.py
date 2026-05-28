@@ -26,6 +26,7 @@ class MainToolBar(QToolBar):
     # Now emits (method, text) — method ∈ SSH/Telnet/Local/WSL.
     quick_connect_triggered = pyqtSignal(str, str)
     split_triggered = pyqtSignal(str)  # "vert", "horiz", "quad"
+    diagnostics_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("Main Toolbar", parent)
@@ -100,13 +101,18 @@ class MainToolBar(QToolBar):
         self.addWidget(qc_widget)
 
         # Wake-on-LAN toolbar button — opens a small ad-hoc dialog.
-        self.wol_act = QAction(named_icon("asbru-wol.svg"), "WoL", self)
+        self.wol_act = QAction(named_icon("power_settings_new.svg"), "WoL", self)
         self.wol_act.setToolTip("Send a Wake-on-LAN magic packet")
         self.addAction(self.wol_act)
 
         self.addSeparator()
 
-        self.settings_act = QAction(named_icon("asbru-preferences.svg"), "Settings", self)
+        self.diagnostics_act = QAction(named_icon("build.svg"), "Diagnostics", self)
+        self.diagnostics_act.setToolTip("Show runtime diagnostics")
+        self.diagnostics_act.triggered.connect(self.diagnostics_requested.emit)
+        self.addAction(self.diagnostics_act)
+
+        self.settings_act = QAction(named_icon("settings.svg"), "Settings", self)
         self.addAction(self.settings_act)
 
     def _update_placeholder(self):

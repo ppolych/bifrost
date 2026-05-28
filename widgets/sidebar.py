@@ -40,6 +40,7 @@ class Sidebar(QWidget):
     forget_credentials = pyqtSignal(dict)      # forget saved password / passphrase
     wake_on_lan = pyqtSignal(dict)             # send a WoL magic packet for this session
     new_session_requested = pyqtSignal(list)   # parent folder path; opens SessionDialog
+    edit_session_requested = pyqtSignal(list, dict)
     macro_triggered = pyqtSignal(str)
     collapse_requested = pyqtSignal(bool)
     
@@ -318,6 +319,9 @@ class Sidebar(QWidget):
             connect = QAction("Connect", self)
             connect.triggered.connect(lambda: self.session_activated.emit(session))
             menu.addAction(connect)
+            edit = QAction("Edit session...", self)
+            edit.triggered.connect(lambda: self.edit_session_requested.emit(parent_path, session))
+            menu.addAction(edit)
             menu.addSeparator()
             rename = QAction("Rename…", self)
             rename.triggered.connect(lambda: self._prompt_rename_session(parent_path, session))
@@ -332,7 +336,7 @@ class Sidebar(QWidget):
                 menu.addAction(forget)
                 if session.get("mac"):
                     wol = QAction("Wake on LAN", self)
-                    wol.setIcon(named_icon("asbru-wol.svg"))
+                    wol.setIcon(named_icon("power_settings_new.svg"))
                     wol.triggered.connect(lambda: self.wake_on_lan.emit(session))
                     menu.addAction(wol)
         elif item.data(0, self.FOLDER_ROLE):

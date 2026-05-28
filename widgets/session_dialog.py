@@ -7,7 +7,7 @@ from core import wsl
 
 
 class SessionDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, session: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Session Settings")
         self.resize(700, 500)
@@ -19,6 +19,10 @@ class SessionDialog(QDialog):
         # ---- Connection tab ----
         self.conn_tab = QWidget()
         self.conn_layout = QVBoxLayout(self.conn_tab)
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Leave blank to generate from connection details")
+        self.conn_layout.addWidget(QLabel("Session name"))
+        self.conn_layout.addWidget(self.name_input)
         self.proto_tabs = QTabWidget()
         self.conn_layout.addWidget(self.proto_tabs)
 
@@ -31,6 +35,10 @@ class SessionDialog(QDialog):
         self.ssh_layout.addRow("Remote Host:", self.host_input)
         self.ssh_layout.addRow("Username:", self.user_input)
         self.ssh_layout.addRow("Port:", self.port_input)
+
+        self.command_input = QLineEdit()
+        self.command_input.setPlaceholderText("Optional command sent after SSH shell opens")
+        self.ssh_layout.addRow("Startup command:", self.command_input)
 
         self.auth_method = QComboBox()
         self.auth_method.addItems(["SSH agent", "Private key", "Password"])
@@ -118,6 +126,8 @@ class SessionDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         self.layout.addWidget(self.buttons)
 
+        if session is not None:
+            self._load_session(session)
         self._on_auth_changed(self.auth_method.currentText())
 
     def _pick_key_file(self):
@@ -139,6 +149,41 @@ class SessionDialog(QDialog):
             "Password": "password",
         }.get(self.auth_method.currentText(), "agent")
 
+    def _set_auth_value(self, value: str) -> None:
+        labels = {
+            "agent": "SSH agent",
+            "key": "Private key",
+            "password": "Password",
+        }
+        self.auth_method.setCurrentText(labels.get(value, "SSH agent"))
+
+    def _load_session(self, session: dict) -> None:
+        self.name_input.setText(session.get("name", ""))
+        proto = session.get("type", "SSH")
+        tab = {"SSH": self.ssh_tab, "RDP": self.rdp_tab, "WSL": self.wsl_tab}.get(proto, self.ssh_tab)
+        idx = self.proto_tabs.indexOf(tab)
+        if idx >= 0:
+            self.proto_tabs.setCurrentIndex(idx)
+        self.host_input.setText(session.get("host", "127.0.0.1"))
+        self.user_input.setText(session.get("user", "root"))
+        self.port_input.setText(str(session.get("port", "22") or "22"))
+        self._set_auth_value(session.get("auth", "agent"))
+        self.key_path_input.setText(session.get("key_path") or "")
+        self.command_input.setText(session.get("command") or "")
+        self.mac_input.setText(session.get("mac") or "")
+        self.broadcast_input.setText(session.get("wol_broadcast") or "")
+        if proto == "WSL":
+            distro = session.get("distro") or "(default)"
+            idx = self.wsl_distro.findText(distro)
+            if idx >= 0:
+                self.wsl_distro.setCurrentIndex(idx)
+        overrides = session.get("overrides") or {}
+        if overrides.get("font"):
+            self.font_override_cb.setChecked(True)
+            self.font_input.setText(overrides["font"])
+        if overrides.get("scheme"):
+            self.color_scheme.setCurrentText(overrides["scheme"])
+
     def get_data(self):
         proto = self.proto_tabs.tabText(self.proto_tabs.currentIndex())
         overrides = {
@@ -148,27 +193,32 @@ class SessionDialog(QDialog):
         if proto == "WSL":
             distro = self.wsl_distro.currentText()
             distro_label = "" if distro == "(default)" else distro
+            name = self.name_input.text().strip() or f"WSL: {distro_label or 'default'}"
             return {
-                "name": f"WSL: {distro_label or 'default'}",
+                "name": name,
                 "type": "WSL",
                 "distro": distro_label,
                 "overrides": overrides,
             }
         if proto == "SSH":
+            generated_name = f"{self.user_input.text()}@{self.host_input.text()}"
+            name = self.name_input.text().strip() or generated_name
             return {
-                "name": f"{self.user_input.text()}@{self.host_input.text()}",
+                "name": name,
                 "type": "SSH",
                 "host": self.host_input.text(),
                 "user": self.user_input.text(),
                 "port": self.port_input.text(),
                 "auth": self._auth_value(),
                 "key_path": self.key_path_input.text().strip() or None,
+                "command": self.command_input.text().strip() or None,
                 "mac": self.mac_input.text().strip() or None,
                 "wol_broadcast": self.broadcast_input.text().strip() or None,
                 "overrides": overrides,
             }
+        name = self.name_input.text().strip() or f"{self.host_input.text()} ({self.user_input.text()})"
         return {
-            "name": f"{self.host_input.text()} ({self.user_input.text()})",
+            "name": name,
             "type": proto,
             "host": self.host_input.text(),
             "user": self.user_input.text(),

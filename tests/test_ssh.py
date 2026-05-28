@@ -131,3 +131,25 @@ def test_session_dialog_emits_ssh_auth_fields(qapp):
     assert data["key_path"] is None
     # password is never in the dict
     assert "password" not in data
+
+
+def test_session_dialog_loads_existing_ssh_session(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog(session={
+        "name": "prod",
+        "type": "SSH",
+        "host": "prod.example.com",
+        "user": "admin",
+        "port": "2222",
+        "auth": "key",
+        "key_path": "~/.ssh/prod",
+        "command": "tmux attach || tmux",
+    })
+
+    data = dlg.get_data()
+    assert data["name"] == "prod"
+    assert data["host"] == "prod.example.com"
+    assert data["auth"] == "key"
+    assert data["key_path"] == "~/.ssh/prod"
+    assert data["command"] == "tmux attach || tmux"

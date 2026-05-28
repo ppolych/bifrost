@@ -205,6 +205,21 @@ class SessionManager:
         self.save()
         return True
 
+    def update_session(self, parent_path, session: dict, new_data: dict) -> bool:
+        """Replace a session dict in-place while preserving list position."""
+        container = self._list_at(parent_path)
+        if container is None or session not in container:
+            return False
+        new_name = (new_data.get("name") or "").strip()
+        if not new_name:
+            return False
+        if any(s.get("name") == new_name for s in container if s is not session):
+            raise ValueError(f"A session named “{new_name}” already exists here.")
+        session.clear()
+        session.update(new_data)
+        self.save()
+        return True
+
     def duplicate_folder(self, path) -> str | None:
         """Deep-copy the folder at `path` into the same parent with a
         ‘(copy)’-suffixed name. Returns the new name, or None on failure."""
