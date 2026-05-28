@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QHeaderView, QInputDialog, QMenu, QMessageBox, QPushButton,
+    QHBoxLayout, QHeaderView, QInputDialog, QLineEdit, QMenu, QMessageBox, QPushButton,
     QSizePolicy, QSplitter, QTabWidget, QToolButton, QTreeWidget, QTreeWidgetItem,
     QVBoxLayout, QWidget,
 )
@@ -116,6 +116,10 @@ class Sidebar(QWidget):
         self.session_layout = QVBoxLayout(self.session_widget)
         self.session_layout.setContentsMargins(2, 2, 2, 2)
         self.session_layout.setSpacing(2)
+        self.session_filter = QLineEdit()
+        self.session_filter.setPlaceholderText("Search sessions...")
+        self.session_filter.textChanged.connect(self._filter_sessions)
+        self.session_layout.addWidget(self.session_filter)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setColumnCount(1)
@@ -258,6 +262,7 @@ class Sidebar(QWidget):
     def refresh_sessions(self):
         self.tree.clear()
         self._populate_tree(self.session_manager.sessions, self.tree, [])
+        self._filter_sessions(self.session_filter.text())
 
     def _populate_tree(self, data, parent, path):
         if isinstance(data, dict):
@@ -282,6 +287,24 @@ class Sidebar(QWidget):
                 # Tooltip carries the full session identity so a narrow sidebar
                 # never hides what you're about to connect to.
                 item.setToolTip(0, _session_tooltip(s))
+
+    def _filter_sessions(self, text: str) -> None:
+        needle = (text or "").strip().lower()
+
+        def apply(item) -> bool:
+            self_match = needle in item.text(0).lower() or not needle
+            child_match = False
+            for i in range(item.childCount()):
+                if apply(item.child(i)):
+                    child_match = True
+            visible = self_match or child_match
+            item.setHidden(not visible)
+            if needle and child_match:
+                item.setExpanded(True)
+            return visible
+
+        for i in range(self.tree.topLevelItemCount()):
+            apply(self.tree.topLevelItem(i))
 
     def refresh_macros(self):
         self.macro_tree.clear()

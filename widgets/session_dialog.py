@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox,
-    QTabWidget, QVBoxLayout, QWidget,
+    QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from core import wsl
@@ -104,6 +104,15 @@ class SessionDialog(QDialog):
         known_row.addWidget(self.known_hosts_input)
         known_row.addWidget(known_browse)
         self.advanced_ssh_layout.addRow("Known hosts file:", known_row)
+        self.tunnels_input = QTextEdit()
+        self.tunnels_input.setPlaceholderText(
+            "One tunnel per line, e.g.\n"
+            "L 127.0.0.1:5432 db.internal:5432\n"
+            "R 0.0.0.0:8080 127.0.0.1:8080\n"
+            "D 127.0.0.1:1080"
+        )
+        self.tunnels_input.setFixedHeight(90)
+        self.advanced_ssh_layout.addRow("SSH tunnels:", self.tunnels_input)
         self.tabs.addTab(self.advanced_ssh_tab, "Advanced SSH Settings")
 
         # Network settings tab
@@ -235,6 +244,7 @@ class SessionDialog(QDialog):
         self.keepalive_sb.setValue(int(session.get("keepalive_interval", 30) or 0))
         self.tcp_keepalive_cb.setChecked(bool(session.get("tcp_keepalive", True)))
         self.known_hosts_input.setText(session.get("known_hosts_file") or "")
+        self.tunnels_input.setPlainText("\n".join(session.get("tunnels") or []))
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -280,6 +290,11 @@ class SessionDialog(QDialog):
                 "keepalive_interval": self.keepalive_sb.value(),
                 "tcp_keepalive": self.tcp_keepalive_cb.isChecked(),
                 "known_hosts_file": self.known_hosts_input.text().strip() or None,
+                "tunnels": [
+                    line.strip()
+                    for line in self.tunnels_input.toPlainText().splitlines()
+                    if line.strip()
+                ],
                 "mac": self.mac_input.text().strip() or None,
                 "wol_broadcast": self.broadcast_input.text().strip() or None,
                 "overrides": overrides,

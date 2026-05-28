@@ -137,6 +137,10 @@ class _TransferThread(QThread):
         self.mode = mode  # "upload" | "download"
         self.local_path = local_path
         self.remote_path = remote_path
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     def run(self):
         try:
@@ -167,9 +171,13 @@ class _TransferThread(QThread):
             self.failed.emit(str(e))
 
     def _callback(self, done: int, total: int):
+        if self._cancelled:
+            raise OSError("Transfer cancelled")
         self.progress.emit(done, total)
 
     def _emit_progress(self, done: int, total: int) -> None:
+        if self._cancelled:
+            raise OSError("Transfer cancelled")
         self.progress.emit(done, total)
 
     def _mkdir_if_missing(self, remote_path: str) -> None:
@@ -283,10 +291,16 @@ class SftpBrowser(QWidget):
         self.refresh_btn = QPushButton(named_icon("refresh.svg"), "")
         self.refresh_btn.setToolTip("Refresh")
         self.upload_btn = QPushButton(named_icon("upload.svg"), "")
-        self.upload_btn.setToolTip("Upload…")
+        self.upload_btn.setToolTip("Upload file...")
+        self.upload_folder_btn = QPushButton(named_icon("folder.svg"), "")
+        self.upload_folder_btn.setToolTip("Upload folder...")
+        self.new_folder_btn = QPushButton(named_icon("add.svg"), "")
+        self.new_folder_btn.setToolTip("New remote folder")
         self.download_btn = QPushButton(named_icon("download.svg"), "")
         self.download_btn.setToolTip("Download…")
-        for b in [self.up_btn, self.refresh_btn, self.upload_btn, self.download_btn]:
+        self.cancel_btn = QPushButton("X")
+        self.cancel_btn.setToolTip("Cancel transfer")
+        for b in [self.up_btn, self.refresh_btn, self.upload_btn, self.upload_folder_btn, self.new_folder_btn, self.download_btn, self.cancel_btn]:
             b.setProperty("compact", True)
             b.setIconSize(QSize(16, 16))
             b.setFixedSize(QSize(28, 24))
@@ -301,7 +315,10 @@ class SftpBrowser(QWidget):
         self.up_btn.clicked.connect(self._go_up)
         self.refresh_btn.clicked.connect(self._refresh)
         self.upload_btn.clicked.connect(self._upload)
+        self.upload_folder_btn.clicked.connect(self._upload_folder)
+        self.new_folder_btn.clicked.connect(self._new_folder)
         self.download_btn.clicked.connect(self._download)
+        self.cancel_btn.clicked.connect(self._cancel_transfer)
 
         # Path label
         self.path_label = QLabel("Not connected")
@@ -400,8 +417,9 @@ class SftpBrowser(QWidget):
     # ----- listing / navigation -----
 
     def _set_buttons_enabled(self, enabled: bool) -> None:
-        for b in (self.up_btn, self.refresh_btn, self.upload_btn, self.download_btn):
+        for b in (self.up_btn, self.refresh_btn, self.upload_btn, self.upload_folder_btn, self.new_folder_btn, self.download_btn):
             b.setEnabled(enabled)
+        self.cancel_btn.setEnabled(self._transfer is not None)
 
     def _icon_for(self, filename: str, attr) -> QIcon:
         """Pick an icon for a single listing entry."""
@@ -671,7 +689,55 @@ class SftpBrowser(QWidget):
         if not local:
             return
         remote = posixpath.join(self.cwd, os.path.basename(local))
+        if not self._confirm_overwrite(remote):
+            return
         self._start_transfer("upload", local, remote)
+
+    def _upload_folder(self) -> None:
+        if self.sftp is None or self._transfer is not None:
+            return
+        local = QFileDialog.getExistingDirectory(self, "Upload folder", "")
+        if not local:
+            return
+        remote = posixpath.join(self.cwd, os.path.basename(local))
+        if not self._confirm_overwrite(remote):
+            return
+        self._start_transfer("upload", local, remote)
+
+    def _new_folder(self) -> None:
+        if self.sftp is None:
+            return
+        name, ok = QInputDialog.getText(self, "New remote folder", "Folder name:")
+        name = name.strip()
+        if not ok or not name:
+            return
+        try:
+            self.sftp.mkdir(posixpath.join(self.cwd, name))
+        except (OSError, paramiko.SSHException) as e:
+            QMessageBox.warning(self, "New folder failed", str(e))
+            return
+        self._refresh()
+
+    def _remote_exists(self, remote: str) -> bool:
+        if self.sftp is None:
+            return False
+        try:
+            self.sftp.stat(remote)
+            return True
+        except OSError:
+            return False
+
+    def _confirm_overwrite(self, remote: str) -> bool:
+        if not self._remote_exists(remote):
+            return True
+        reply = QMessageBox.question(
+            self,
+            "Overwrite remote item",
+            f"'{posixpath.basename(remote)}' already exists. Overwrite?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
 
     def _download(self) -> None:
         if self.sftp is None or self._transfer is not None:
@@ -697,7 +763,13 @@ class SftpBrowser(QWidget):
         t.failed.connect(self._on_transfer_failed)
         t.finished.connect(lambda: self._cleanup_transfer())
         self._transfer = t
+        self.cancel_btn.setEnabled(True)
         t.start()
+
+    def _cancel_transfer(self) -> None:
+        if self._transfer is not None:
+            self._transfer.cancel()
+            self.cancel_btn.setEnabled(False)
 
     def _on_transfer_progress(self, done: int, total: int) -> None:
         self._update_transfer_progress(done, total)

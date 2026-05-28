@@ -330,6 +330,28 @@ def test_download_remote_folder_uses_directory_picker(browser, monkeypatch):
     assert started == [("download", os.path.join("C:/Downloads", "src"), "/home/user/src")]
 
 
+def test_new_folder_creates_remote_directory(browser, monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+
+    browser.sftp = MagicMock()
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("new-dir", True))
+    monkeypatch.setattr(browser, "_refresh", lambda: None)
+
+    browser._new_folder()
+
+    browser.sftp.mkdir.assert_called_once_with("/home/user/new-dir")
+
+
+def test_cancel_transfer_marks_thread_cancelled(browser):
+    thread = MagicMock()
+    browser._transfer = thread
+
+    browser._cancel_transfer()
+
+    thread.cancel.assert_called_once()
+    assert not browser.cancel_btn.isEnabled()
+
+
 # ---------------------------------------------------------------------------
 # Tiny test double for QDropEvent — covers what dropEvent actually touches.
 # ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ class SshCredentials:
     tcp_keepalive: bool = False   # SO_KEEPALIVE on the underlying socket
     known_hosts_file: Optional[str] = None
     startup_command: str = ""
+    tunnels: list[str] = field(default_factory=list)
     extra_kwargs: dict = field(default_factory=dict)
 
     @classmethod
@@ -58,6 +59,7 @@ class SshCredentials:
             tcp_keepalive=bool(data.get("tcp_keepalive", False)),
             known_hosts_file=data.get("known_hosts_file") or None,
             startup_command=data.get("command") or "",
+            tunnels=list(data.get("tunnels") or []),
         )
 
 

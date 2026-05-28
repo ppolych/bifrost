@@ -1,5 +1,6 @@
 import configparser
 import importlib.metadata
+import json
 import logging
 import os
 import platform
@@ -30,7 +31,7 @@ from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
 from widgets.remote_monitor import RemoteMonitorWidget
 from core.styles import get_dark_theme
-from core import credentials, ip_tools, keygen, wake_on_lan, wsl
+from core import credentials, ip_tools, keygen, session_crypto, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
 from core.logging_setup import _log_path, configure_logging
@@ -239,6 +240,17 @@ class BifrostApp(QMainWindow):
         duplicate_act = QAction("Duplicate tab", self)
         duplicate_act.triggered.connect(lambda: self.new_terminal_tab(self.tabs.tabText(index)))
         menu.addAction(duplicate_act)
+        widget = self.tabs.widget(index)
+        if isinstance(widget, TerminalContainer) and widget.ssh_session:
+            reconnect_act = QAction("Reconnect tab", self)
+            reconnect_act.triggered.connect(lambda: self._reconnect_tab(index))
+            menu.addAction(reconnect_act)
+            sftp_act = QAction("Open SFTP here", self)
+            sftp_act.triggered.connect(lambda: self._attach_sftp_for_tab(index))
+            menu.addAction(sftp_act)
+            save_copy = QAction("Save session copy", self)
+            save_copy.triggered.connect(lambda: self._save_session_copy(widget.ssh_session))
+            menu.addAction(save_copy)
         
         menu.exec(self.tabs.mapToGlobal(pos))
 
@@ -988,8 +1000,26 @@ class BifrostApp(QMainWindow):
         if not path:
             return
         try:
-            self.session_manager.export_sessions(path)
+            encrypt = QMessageBox.question(
+                self,
+                "Encrypt export?",
+                "Encrypt this session export with a password?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if encrypt == QMessageBox.StandardButton.Yes:
+                password, ok = QInputDialog.getText(
+                    self, "Export password", "Password:", QLineEdit.EchoMode.Password,
+                )
+                if not ok or not password:
+                    return
+                self.session_manager.export_sessions_encrypted(path, password)
+            else:
+                self.session_manager.export_sessions(path)
         except OSError as e:
+            QMessageBox.warning(self, "Export failed", str(e))
+            return
+        except ValueError as e:
             QMessageBox.warning(self, "Export failed", str(e))
             return
         self.status_bar.showMessage(f"Exported sessions to {path}", 4000)
@@ -1002,7 +1032,21 @@ class BifrostApp(QMainWindow):
         if not path:
             return
         before = len(self.session_manager.sessions)
-        self.session_manager.import_sessions(path)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                incoming = json.load(f)
+            if session_crypto.is_encrypted_session_file(incoming):
+                password, ok = QInputDialog.getText(
+                    self, "Import password", "Password:", QLineEdit.EchoMode.Password,
+                )
+                if not ok:
+                    return
+                self.session_manager.import_sessions_encrypted(path, password)
+            else:
+                self.session_manager.import_sessions(path)
+        except (OSError, ValueError, json.JSONDecodeError) as e:
+            QMessageBox.warning(self, "Import failed", str(e))
+            return
         after = len(self.session_manager.sessions)
         self.sidebar.refresh_sessions()
         self.status_bar.showMessage(
@@ -1054,6 +1098,15 @@ class BifrostApp(QMainWindow):
         self.sidebar.refresh_sessions()
         self._refresh_credentials_view()
         self.status_bar.showMessage(f"Updated session {data['name']}", 4000)
+
+    def _save_session_copy(self, session: dict):
+        data = dict(session)
+        data["name"] = f"{data.get('name', 'session')} (copy)"
+        added = self.session_manager.add_session_at(["User sessions"], data)
+        if added:
+            data["name"] = added
+            self.sidebar.refresh_sessions()
+            self.status_bar.showMessage(f"Saved session copy {added}", 4000)
 
     def close_tab(self, index):
         if index in self.pinned_tabs:
@@ -1227,6 +1280,16 @@ class BifrostApp(QMainWindow):
         self.status_bar.showMessage(
             f"Reconnecting {session.get('user', '')}@{session.get('host', '')}", 4000,
         )
+
+    def _attach_sftp_for_tab(self, tab_index: int):
+        if tab_index < 0 or tab_index >= self.tabs.count():
+            return
+        backend = self._ssh_backend_of(self.tabs.widget(tab_index))
+        if backend is None:
+            return
+        self.tabs.setCurrentIndex(tab_index)
+        self.sidebar.show_sftp_pane()
+        self._attach_sftp_when_ready(backend)
 
     def _ssh_backend_of(self, widget) -> ParamikoBackend | None:
         if not isinstance(widget, TerminalContainer):

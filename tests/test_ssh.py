@@ -45,6 +45,7 @@ def test_credentials_from_session_with_advanced_ssh_fields():
         "keepalive_interval": 60,
         "tcp_keepalive": True,
         "known_hosts_file": "~/.ssh/custom_known_hosts",
+        "tunnels": ["L 127.0.0.1:5432 db:5432"],
     })
 
     assert creds.connect_timeout == 45
@@ -52,6 +53,7 @@ def test_credentials_from_session_with_advanced_ssh_fields():
     assert creds.keepalive_interval == 60
     assert creds.tcp_keepalive is True
     assert creds.known_hosts_file == "~/.ssh/custom_known_hosts"
+    assert creds.tunnels == ["L 127.0.0.1:5432 db:5432"]
 
 
 def test_credentials_port_coercion_handles_empty():
@@ -188,6 +190,7 @@ def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
         "keepalive_interval": 60,
         "tcp_keepalive": True,
         "known_hosts_file": "~/.ssh/prod_known_hosts",
+        "tunnels": ["D 127.0.0.1:1080"],
         "mac": "AA:BB:CC:11:22:33",
         "wol_broadcast": "10.0.0.255",
     })
@@ -203,5 +206,6 @@ def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
     assert data["keepalive_interval"] == 60
     assert data["tcp_keepalive"] is True
     assert data["known_hosts_file"] == "~/.ssh/prod_known_hosts"
+    assert data["tunnels"] == ["D 127.0.0.1:1080"]
     assert data["mac"] == "AA:BB:CC:11:22:33"
     assert data["wol_broadcast"] == "10.0.0.255"

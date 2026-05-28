@@ -192,3 +192,22 @@ def test_duplicate_session_uniquifies_when_copy_exists(sm):
     sm.duplicate_session(["Group A"], session)
     second = sm.duplicate_session(["Group A"], session)
     assert second["name"] == "alpha (copy) (2)"
+
+
+def test_encrypted_export_import_round_trip(sm, tmp_path, monkeypatch):
+    path = tmp_path / "sessions.enc.json"
+    sm.export_sessions_encrypted(str(path), "pw")
+
+    fresh = persistence.SessionManager()
+    fresh.sessions = {}
+    fresh.import_sessions_encrypted(str(path), "pw")
+
+    assert fresh.sessions["Group A"][0]["name"] == "alpha"
+
+
+def test_plain_import_refuses_encrypted_file(sm, tmp_path):
+    path = tmp_path / "sessions.enc.json"
+    sm.export_sessions_encrypted(str(path), "pw")
+
+    with pytest.raises(ValueError):
+        sm.import_sessions(str(path))

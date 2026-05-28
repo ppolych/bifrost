@@ -1,6 +1,7 @@
 import copy
 import logging
 
+from core import session_crypto
 from core.platform_utils import atomic_write_json, config_path, load_json
 
 log = logging.getLogger(__name__)
@@ -61,11 +62,21 @@ class SessionManager:
     def export_sessions(self, export_path):
         atomic_write_json(export_path, self.sessions)
 
+    def export_sessions_encrypted(self, export_path, password: str):
+        atomic_write_json(export_path, session_crypto.encrypt_sessions(self.sessions, password))
+
     def import_sessions(self, import_path):
         merged = load_json(import_path, None)
+        if session_crypto.is_encrypted_session_file(merged):
+            raise ValueError("Encrypted session file requires a password")
         if not isinstance(merged, dict):
             log.warning("Refusing to import non-dict session data from %s", import_path)
             return
+        self.sessions.update(merged)
+        self.save()
+
+    def import_sessions_encrypted(self, import_path, password: str):
+        merged = session_crypto.decrypt_sessions(load_json(import_path, None), password)
         self.sessions.update(merged)
         self.save()
 

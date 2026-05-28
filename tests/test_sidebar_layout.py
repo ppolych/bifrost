@@ -60,6 +60,18 @@ def test_session_tree_starts_collapsed(sidebar):
         assert not item.isExpanded()
 
 
+def test_session_filter_shows_matching_group(sidebar):
+    sidebar.session_filter.setText("production")
+
+    visible = [
+        sidebar.tree.topLevelItem(i).text(0)
+        for i in range(sidebar.tree.topLevelItemCount())
+        if not sidebar.tree.topLevelItem(i).isHidden()
+    ]
+
+    assert visible == ["Work Folders"]
+
+
 def test_show_and_hide_sftp_pane(sidebar):
     sidebar.show_sftp_pane(sizes=(400, 300))
     assert sidebar.content_splitter.sizes()[1] > 0
