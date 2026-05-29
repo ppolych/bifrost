@@ -26,11 +26,13 @@ def test_credentials_from_session_with_key():
             "port": 22,
             "auth": "key",
             "key_path": "~/.ssh/id_ed25519",
+            "certificate_path": "~/.ssh/id_ed25519-cert.pub",
             "command": "uptime",
         }
     )
     assert creds.auth == "key"
     assert creds.key_filename == "~/.ssh/id_ed25519"
+    assert creds.certificate_filename == "~/.ssh/id_ed25519-cert.pub"
     assert creds.startup_command == "uptime"
 
 
@@ -46,6 +48,8 @@ def test_credentials_from_session_with_advanced_ssh_fields():
         "tcp_keepalive": True,
         "known_hosts_file": "~/.ssh/custom_known_hosts",
         "tunnels": ["L 127.0.0.1:5432 db:5432"],
+        "proxy_jump": "jump.example.com",
+        "proxy_command": "ssh -W %h:%p jump.example.com",
     })
 
     assert creds.connect_timeout == 45
@@ -54,6 +58,35 @@ def test_credentials_from_session_with_advanced_ssh_fields():
     assert creds.tcp_keepalive is True
     assert creds.known_hosts_file == "~/.ssh/custom_known_hosts"
     assert creds.tunnels == ["L 127.0.0.1:5432 db:5432"]
+    assert creds.proxy_jump == "jump.example.com"
+    assert creds.proxy_command == "ssh -W %h:%p jump.example.com"
+
+
+def test_parse_proxy_jump():
+    from core.ssh_backend import ParamikoBackend
+
+    assert ParamikoBackend._parse_proxy_jump("bastion") == ("", "bastion", 22)
+    assert ParamikoBackend._parse_proxy_jump("ops@bastion:2222") == ("ops", "bastion", 2222)
+    assert ParamikoBackend._parse_proxy_jump("bastion:nope") is None
+
+
+def test_proxy_command_substitutes_host_and_port(monkeypatch):
+    from core import ssh_backend
+    from core.ssh_backend import ParamikoBackend, SshCredentials
+
+    commands = []
+
+    class FakeProxy:
+        def __init__(self, command):
+            commands.append(command)
+
+    monkeypatch.setattr(ssh_backend.paramiko.proxy, "ProxyCommand", FakeProxy)
+    backend = ParamikoBackend(
+        SshCredentials(host="target.example.com", port=2222, proxy_command="ssh -W %h:%p jump")
+    )
+
+    assert isinstance(backend._proxy_socket(), FakeProxy)
+    assert commands == ["ssh -W target.example.com:2222 jump"]
 
 
 def test_parse_local_remote_and_dynamic_tunnels():
@@ -115,6 +148,33 @@ def test_backend_emits_error_once():
     # Second read should not repeat the error
     second = backend.read()
     assert second == b""
+
+
+def test_backend_status_classifies_connection_states():
+    import paramiko
+
+    from core.ssh_backend import ParamikoBackend, SshCredentials
+
+    backend = ParamikoBackend(SshCredentials(host="h", username="u"))
+    assert backend.status == "connecting"
+
+    backend._connect_error = paramiko.AuthenticationException("bad password")
+    backend._ready.set()
+    assert backend.status == "auth failed"
+    assert backend.reconnectable
+
+    backend._connect_error = None
+    backend._closed = True
+    assert backend.status == "closed"
+
+
+def test_backend_status_detects_host_key_failures():
+    from core.ssh_backend import ParamikoBackend, SshCredentials
+
+    backend = ParamikoBackend(SshCredentials(host="h", username="u"))
+    backend._connect_error = RuntimeError("Host key for h rejected by user")
+    backend._ready.set()
+    assert backend.status == "host-key failed"
 
 
 def test_sftp_format_size():
@@ -196,6 +256,7 @@ def test_session_dialog_loads_existing_ssh_session(qapp):
         "port": "2222",
         "auth": "key",
         "key_path": "~/.ssh/prod",
+        "certificate_path": "~/.ssh/prod-cert.pub",
         "command": "tmux attach || tmux",
     })
 
@@ -204,6 +265,7 @@ def test_session_dialog_loads_existing_ssh_session(qapp):
     assert data["host"] == "prod.example.com"
     assert data["auth"] == "key"
     assert data["key_path"] == "~/.ssh/prod"
+    assert data["certificate_path"] == "~/.ssh/prod-cert.pub"
     assert data["command"] == "tmux attach || tmux"
 
 
@@ -220,6 +282,8 @@ def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
         "keepalive_interval": 60,
         "tcp_keepalive": True,
         "known_hosts_file": "~/.ssh/prod_known_hosts",
+        "proxy_jump": "ops@bastion:2222",
+        "proxy_command": "ssh -W %h:%p bastion",
         "tunnels": ["D 127.0.0.1:1080"],
         "mac": "AA:BB:CC:11:22:33",
         "wol_broadcast": "10.0.0.255",
@@ -236,6 +300,8 @@ def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
     assert data["keepalive_interval"] == 60
     assert data["tcp_keepalive"] is True
     assert data["known_hosts_file"] == "~/.ssh/prod_known_hosts"
+    assert data["proxy_jump"] == "ops@bastion:2222"
+    assert data["proxy_command"] == "ssh -W %h:%p bastion"
     assert data["tunnels"] == ["D 127.0.0.1:1080"]
     assert data["mac"] == "AA:BB:CC:11:22:33"
     assert data["wol_broadcast"] == "10.0.0.255"

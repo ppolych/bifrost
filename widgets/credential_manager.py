@@ -45,7 +45,7 @@ class CredentialManager(QWidget):
         self.layout.addWidget(self.status_label)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Account", "Type", "Stored"])
+        self.tree.setHeaderLabels(["Session", "Account", "Secret", "Status", "Provider"])
         self.tree.setRootIsDecorated(False)
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.tree.setStyleSheet(
@@ -69,34 +69,73 @@ class CredentialManager(QWidget):
         self._sessions = sessions
         self.tree.clear()
 
+        provider = credentials.provider_label()
         for session in sessions:
             if session.get("type") != "SSH":
                 continue
             user = session.get("user", "")
             host = session.get("host", "")
             port = int(session.get("port", 22) or 22)
-            account = f"{user}@{host}:{port}"
+            account = credentials.password_account(user, host, port)
+            session_name = session.get("name") or account
 
             pw_stored = credentials.get_password(user, host, port) is not None
             key_path = session.get("key_path") or ""
             pp_stored = credentials.get_passphrase(key_path) is not None if key_path else False
 
-            if pw_stored:
-                item = QTreeWidgetItem(self.tree, [account, "Password", "✓"])
-                item.setData(0, Qt.ItemDataRole.UserRole, session)
+            self._add_audit_row(
+                session=session,
+                session_name=session_name,
+                account=account,
+                secret_type="Password",
+                stored=pw_stored,
+                provider=provider,
+            )
             if pp_stored:
-                item = QTreeWidgetItem(
-                    self.tree, [f"{account}  ({key_path})", "Passphrase", "✓"],
+                self._add_audit_row(
+                    session=session,
+                    session_name=session_name,
+                    account=credentials.passphrase_account(key_path),
+                    secret_type="Passphrase",
+                    stored=True,
+                    provider=provider,
                 )
-                item.setData(0, Qt.ItemDataRole.UserRole, session)
+            elif key_path:
+                self._add_audit_row(
+                    session=session,
+                    session_name=session_name,
+                    account=credentials.passphrase_account(key_path),
+                    secret_type="Passphrase",
+                    stored=False,
+                    provider=provider,
+                )
 
         if self.tree.topLevelItemCount() == 0:
             placeholder = QTreeWidgetItem(
-                self.tree, ["(no saved credentials yet)", "", ""],
+                self.tree, ["(no SSH sessions)", "", "", "", ""],
             )
             placeholder.setDisabled(True)
 
         self._update_status_label()
+
+    def _add_audit_row(
+        self,
+        *,
+        session: dict,
+        session_name: str,
+        account: str,
+        secret_type: str,
+        stored: bool,
+        provider: str,
+    ) -> None:
+        item = QTreeWidgetItem(
+            self.tree,
+            [session_name, account, secret_type, "Saved" if stored else "Missing", provider],
+        )
+        item.setData(0, Qt.ItemDataRole.UserRole, session)
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, stored)
+        if not stored:
+            item.setForeground(3, Qt.GlobalColor.gray)
 
     def _forget_selected(self) -> None:
         item = self.tree.currentItem()
@@ -104,6 +143,9 @@ class CredentialManager(QWidget):
             return
         session = item.data(0, Qt.ItemDataRole.UserRole)
         if not session:
+            return
+        if not item.data(0, Qt.ItemDataRole.UserRole + 1):
+            QMessageBox.information(self, "Forget credential", "No credential is saved for this row.")
             return
         reply = QMessageBox.question(
             self, "Forget credential",

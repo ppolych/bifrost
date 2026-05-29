@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import select
+import shlex
 import socket
 import threading
 from dataclasses import dataclass, field
@@ -277,6 +278,7 @@ class SshCredentials:
     auth: str = "agent"
     password: Optional[str] = None        # never persisted; supplied at connect-time
     key_filename: Optional[str] = None
+    certificate_filename: Optional[str] = None
     passphrase: Optional[str] = None      # never persisted; supplied at connect-time
     connect_timeout: float = 15.0
     agent_forwarding: bool = False
@@ -285,6 +287,8 @@ class SshCredentials:
     known_hosts_file: Optional[str] = None
     startup_command: str = ""
     tunnels: list[str] = field(default_factory=list)
+    proxy_command: str = ""
+    proxy_jump: str = ""
     extra_kwargs: dict = field(default_factory=dict)
 
     @classmethod
@@ -296,6 +300,7 @@ class SshCredentials:
             username=data.get("user", "") or "",
             auth=data.get("auth", "agent"),
             key_filename=data.get("key_path") or None,
+            certificate_filename=data.get("certificate_path") or None,
             connect_timeout=float(data.get("connect_timeout", 15) or 15),
             agent_forwarding=bool(data.get("agent_forwarding", False)),
             keepalive_interval=int(data.get("keepalive_interval", 0) or 0),
@@ -303,6 +308,8 @@ class SshCredentials:
             known_hosts_file=data.get("known_hosts_file") or None,
             startup_command=data.get("command") or "",
             tunnels=list(data.get("tunnels") or []),
+            proxy_command=data.get("proxy_command") or "",
+            proxy_jump=data.get("proxy_jump") or "",
         )
 
 
@@ -379,7 +386,10 @@ class ParamikoBackend:
             elif self.creds.auth == "key":
                 if not self.creds.key_filename:
                     raise paramiko.SSHException("Key authentication selected but no key file provided")
-                kwargs["key_filename"] = os.path.expanduser(self.creds.key_filename)
+                key_files = [os.path.expanduser(self.creds.key_filename)]
+                if self.creds.certificate_filename:
+                    key_files.append(os.path.expanduser(self.creds.certificate_filename))
+                kwargs["key_filename"] = key_files
                 if self.creds.passphrase:
                     kwargs["passphrase"] = self.creds.passphrase
             elif self.creds.auth == "agent":
@@ -389,6 +399,9 @@ class ParamikoBackend:
                 raise paramiko.SSHException(f"Unknown auth method: {self.creds.auth!r}")
 
             kwargs.update(self.creds.extra_kwargs)
+            proxy_sock = self._proxy_socket()
+            if proxy_sock is not None:
+                kwargs["sock"] = proxy_sock
             client.connect(**kwargs)
             self._start_tunnels(client)
 
@@ -527,6 +540,75 @@ class ParamikoBackend:
     @property
     def connect_error(self) -> Optional[BaseException]:
         return self._connect_error
+
+    @property
+    def status(self) -> str:
+        """User-facing connection state for tab/sidebar status surfaces."""
+        if self._closed:
+            return "closed"
+        if self._connect_error is not None:
+            if isinstance(self._connect_error, paramiko.AuthenticationException):
+                return "auth failed"
+            if isinstance(self._connect_error, paramiko.BadHostKeyException):
+                return "host-key failed"
+            message = str(self._connect_error).lower()
+            if "host key" in message:
+                return "host-key failed"
+            return "failed"
+        if not self._ready.is_set():
+            return "connecting"
+        if self.channel is None:
+            return "disconnected"
+        if getattr(self.channel, "closed", False):
+            return "disconnected"
+        transport = self.client.get_transport() if self.client is not None else None
+        if transport is not None and not transport.is_active():
+            return "disconnected"
+        return "connected"
+
+    @property
+    def reconnectable(self) -> bool:
+        return self.status in {"closed", "disconnected", "failed", "auth failed", "host-key failed"}
+
+    def _proxy_socket(self):
+        if self.creds.proxy_command:
+            command = (
+                self.creds.proxy_command
+                .replace("%h", self.creds.host)
+                .replace("%p", str(self.creds.port))
+            )
+            return paramiko.proxy.ProxyCommand(command)
+        if self.creds.proxy_jump:
+            jump = self._parse_proxy_jump(self.creds.proxy_jump)
+            if jump is None:
+                raise paramiko.SSHException(f"Invalid ProxyJump: {self.creds.proxy_jump!r}")
+            user, host, port = jump
+            destination = f"{self.creds.host}:{self.creds.port}"
+            target = f"{user}@{host}" if user else host
+            command = f"ssh -W {shlex.quote(destination)} -p {port} {shlex.quote(target)}"
+            return paramiko.proxy.ProxyCommand(command)
+        return None
+
+    @staticmethod
+    def _parse_proxy_jump(value: str) -> tuple[str, str, int] | None:
+        raw = (value or "").strip()
+        if not raw:
+            return None
+        user = ""
+        if "@" in raw:
+            user, raw = raw.split("@", 1)
+        host, sep, port_text = raw.rpartition(":")
+        if not sep:
+            host = raw
+            port = 22
+        else:
+            try:
+                port = int(port_text)
+            except ValueError:
+                return None
+        if not host or port < 1 or port > 65535:
+            return None
+        return user, host, port
 
     def _start_tunnels(self, client: paramiko.SSHClient) -> None:
         transport = client.get_transport()

@@ -62,6 +62,7 @@ def test_drop_queues_files_when_already_transferring(browser, tmp_path, monkeypa
     queue instead of clobbering the current transfer."""
     # Pretend SFTP is attached so the gate passes.
     browser.sftp = MagicMock()
+    browser.sftp.stat.side_effect = OSError("missing")
     # Pretend a transfer is already running.
     browser._transfer = MagicMock()
 
@@ -86,6 +87,7 @@ def test_drop_queues_files_when_already_transferring(browser, tmp_path, monkeypa
 
 def test_drop_starts_first_and_queues_rest_when_idle(browser, tmp_path, monkeypatch):
     browser.sftp = MagicMock()
+    browser.sftp.stat.side_effect = OSError("missing")
     browser._transfer = None
 
     started: list[tuple[str, str, str]] = []
@@ -108,6 +110,7 @@ def test_drop_starts_first_and_queues_rest_when_idle(browser, tmp_path, monkeypa
 
 def test_drop_queues_directories_recursively(browser, tmp_path, monkeypatch):
     browser.sftp = MagicMock()
+    browser.sftp.stat.side_effect = OSError("missing")
     browser._transfer = None
     started: list[tuple[str, str, str]] = []
     monkeypatch.setattr(
@@ -350,6 +353,68 @@ def test_cancel_transfer_marks_thread_cancelled(browser):
 
     thread.cancel.assert_called_once()
     assert not browser.cancel_btn.isEnabled()
+
+
+def test_upload_conflict_skip_apply_all(browser, monkeypatch):
+    browser.sftp = MagicMock()
+    browser.sftp.stat.return_value = object()
+    monkeypatch.setattr(browser, "_prompt_upload_conflict", lambda remote: ("skip", True))
+
+    resolved = browser._resolve_upload_conflicts([
+        ("/tmp/a.txt", "/home/user/a.txt"),
+        ("/tmp/b.txt", "/home/user/b.txt"),
+    ])
+
+    assert resolved == []
+
+
+def test_upload_conflict_overwrite_apply_all(browser, monkeypatch):
+    browser.sftp = MagicMock()
+    browser.sftp.stat.return_value = object()
+    prompts = []
+
+    def prompt(remote):
+        prompts.append(remote)
+        return "overwrite", True
+
+    monkeypatch.setattr(browser, "_prompt_upload_conflict", prompt)
+
+    queue = [
+        ("/tmp/a.txt", "/home/user/a.txt"),
+        ("/tmp/b.txt", "/home/user/b.txt"),
+    ]
+    assert browser._resolve_upload_conflicts(queue) == queue
+    assert prompts == ["/home/user/a.txt"]
+
+
+def test_upload_conflict_rename(browser, monkeypatch):
+    browser.sftp = MagicMock()
+
+    def stat(remote):
+        if remote in {"/home/user/a.txt", "/home/user/a (1).txt"}:
+            return object()
+        raise OSError("missing")
+
+    browser.sftp.stat.side_effect = stat
+    monkeypatch.setattr(browser, "_prompt_upload_conflict", lambda remote: ("rename", False))
+    monkeypatch.setattr(browser, "_prompt_remote_rename", lambda remote: "/home/user/a (2).txt")
+
+    assert browser._resolve_upload_conflicts([
+        ("/tmp/a.txt", "/home/user/a.txt"),
+    ]) == [("/tmp/a.txt", "/home/user/a (2).txt")]
+
+
+def test_next_available_remote_name(browser):
+    browser.sftp = MagicMock()
+
+    def stat(remote):
+        if remote in {"/home/user/a.txt", "/home/user/a (1).txt"}:
+            return object()
+        raise OSError("missing")
+
+    browser.sftp.stat.side_effect = stat
+
+    assert browser._next_available_remote_name("/home/user/a.txt") == "/home/user/a (2).txt"
 
 
 # ---------------------------------------------------------------------------

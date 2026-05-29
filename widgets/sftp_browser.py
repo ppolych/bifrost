@@ -38,6 +38,7 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QCheckBox,
 )
 
 from core.icons import named_icon
@@ -689,9 +690,10 @@ class SftpBrowser(QWidget):
         if not local:
             return
         remote = posixpath.join(self.cwd, os.path.basename(local))
-        if not self._confirm_overwrite(remote):
+        queue = self._resolve_upload_conflicts([(local, remote)])
+        if not queue:
             return
-        self._start_transfer("upload", local, remote)
+        self._start_transfer("upload", queue[0][0], queue[0][1])
 
     def _upload_folder(self) -> None:
         if self.sftp is None or self._transfer is not None:
@@ -700,9 +702,10 @@ class SftpBrowser(QWidget):
         if not local:
             return
         remote = posixpath.join(self.cwd, os.path.basename(local))
-        if not self._confirm_overwrite(remote):
+        queue = self._resolve_upload_conflicts([(local, remote)])
+        if not queue:
             return
-        self._start_transfer("upload", local, remote)
+        self._start_transfer("upload", queue[0][0], queue[0][1])
 
     def _new_folder(self) -> None:
         if self.sftp is None:
@@ -727,17 +730,87 @@ class SftpBrowser(QWidget):
         except OSError:
             return False
 
-    def _confirm_overwrite(self, remote: str) -> bool:
-        if not self._remote_exists(remote):
-            return True
-        reply = QMessageBox.question(
+    def _resolve_upload_conflicts(self, queue: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        resolved: list[tuple[str, str]] = []
+        apply_choice: str | None = None
+        for local, remote in queue:
+            if not self._remote_exists(remote):
+                resolved.append((local, remote))
+                continue
+            choice = apply_choice
+            apply_to_all = False
+            if choice is None:
+                choice, apply_to_all = self._prompt_upload_conflict(remote)
+            if choice == "cancel":
+                return []
+            if choice == "skip":
+                if apply_to_all:
+                    apply_choice = "skip"
+                continue
+            if choice == "overwrite":
+                if apply_to_all:
+                    apply_choice = "overwrite"
+                resolved.append((local, remote))
+                continue
+            if choice == "rename":
+                renamed = self._prompt_remote_rename(remote)
+                if not renamed:
+                    return []
+                resolved.append((local, renamed))
+        return resolved
+
+    def _prompt_upload_conflict(self, remote: str) -> tuple[str, bool]:
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Remote item exists")
+        msg.setText(f"'{posixpath.basename(remote)}' already exists.")
+        msg.setInformativeText("Choose how to handle this upload.")
+        overwrite = msg.addButton("Overwrite", QMessageBox.ButtonRole.AcceptRole)
+        skip = msg.addButton("Skip", QMessageBox.ButtonRole.DestructiveRole)
+        rename = msg.addButton("Rename...", QMessageBox.ButtonRole.ActionRole)
+        cancel = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        checkbox = QCheckBox("Apply to remaining conflicts")
+        msg.setCheckBox(checkbox)
+        msg.setDefaultButton(overwrite)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is overwrite:
+            return "overwrite", checkbox.isChecked()
+        if clicked is skip:
+            return "skip", checkbox.isChecked()
+        if clicked is rename:
+            return "rename", False
+        if clicked is cancel:
+            return "cancel", False
+        return "cancel", False
+
+    def _prompt_remote_rename(self, remote: str) -> str | None:
+        directory = posixpath.dirname(remote)
+        current = posixpath.basename(remote)
+        suggested = self._next_available_remote_name(remote)
+        new_name, ok = QInputDialog.getText(
             self,
-            "Overwrite remote item",
-            f"'{posixpath.basename(remote)}' already exists. Overwrite?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            "Rename upload",
+            "Remote name:",
+            text=posixpath.basename(suggested) or current,
         )
-        return reply == QMessageBox.StandardButton.Yes
+        new_name = new_name.strip()
+        if not ok or not new_name:
+            return None
+        candidate = posixpath.join(directory, new_name)
+        if self._remote_exists(candidate):
+            QMessageBox.warning(self, "Rename upload", f"'{new_name}' already exists.")
+            return None
+        return candidate
+
+    def _next_available_remote_name(self, remote: str) -> str:
+        directory = posixpath.dirname(remote)
+        name = posixpath.basename(remote)
+        stem, ext = posixpath.splitext(name)
+        for i in range(1, 1000):
+            candidate = posixpath.join(directory, f"{stem} ({i}){ext}")
+            if not self._remote_exists(candidate):
+                return candidate
+        return posixpath.join(directory, f"{stem} copy{ext}")
 
     def _download(self) -> None:
         if self.sftp is None or self._transfer is not None:
@@ -886,10 +959,13 @@ class SftpBrowser(QWidget):
 
         # Build the upload queue. If nothing's transferring, kick off the first
         # immediately; the rest chain via _cleanup_transfer.
-        new_queue = [
+        new_queue = self._resolve_upload_conflicts([
             (local, posixpath.join(target_dir, os.path.basename(local)))
             for local in upload_items
-        ]
+        ])
+        if not new_queue:
+            event.acceptProposedAction()
+            return
         if self._transfer is not None:
             self._upload_queue.extend(new_queue)
         else:

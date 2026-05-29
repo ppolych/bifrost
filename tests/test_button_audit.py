@@ -187,6 +187,16 @@ def test_ssh_browser_emits_reconnect_for_selection(qapp):
     assert received == [4]
 
 
+def test_ssh_browser_emits_reconnect_all(qapp):
+    from widgets.ssh_browser import SshBrowser
+
+    b = SshBrowser()
+    received: list[bool] = []
+    b.reconnect_all.connect(lambda: received.append(True))
+    b.reconnect_all_btn.click()
+    assert received == [True]
+
+
 # ---------------------------------------------------------------------------
 # CredentialManager
 # ---------------------------------------------------------------------------
@@ -231,10 +241,12 @@ def test_credential_manager_lists_only_sessions_with_keyring_entries(qapp, mem_k
     mgr = CredentialManager()
     mgr.set_sessions([s1, s2])
 
-    # One real row, no placeholder.
-    assert mgr.tree.topLevelItemCount() == 1
-    assert mgr.tree.topLevelItem(0).text(0) == "a@h:22"
-    assert mgr.tree.topLevelItem(0).text(1) == "Password"
+    assert mgr.tree.topLevelItemCount() == 2
+    assert mgr.tree.topLevelItem(0).text(1) == "a@h:22"
+    assert mgr.tree.topLevelItem(0).text(2) == "Password"
+    assert mgr.tree.topLevelItem(0).text(3) == "Saved"
+    assert mgr.tree.topLevelItem(1).text(1) == "b@h:22"
+    assert mgr.tree.topLevelItem(1).text(3) == "Missing"
 
 
 def test_credential_manager_placeholder_when_nothing_saved(qapp, mem_keyring):
@@ -244,6 +256,29 @@ def test_credential_manager_placeholder_when_nothing_saved(qapp, mem_keyring):
     mgr.set_sessions([
         {"type": "SSH", "name": "a@h", "host": "h", "user": "a", "port": 22},
     ])
-    # No keyring entry → placeholder row.
     assert mgr.tree.topLevelItemCount() == 1
-    assert mgr.tree.topLevelItem(0).isDisabled()
+    assert not mgr.tree.topLevelItem(0).isDisabled()
+    assert mgr.tree.topLevelItem(0).text(3) == "Missing"
+
+
+def test_credential_manager_shows_passphrase_account(qapp, mem_keyring):
+    from core import credentials
+    from widgets.credential_manager import CredentialManager
+
+    session = {
+        "type": "SSH",
+        "name": "keyed",
+        "host": "h",
+        "user": "a",
+        "port": 22,
+        "key_path": "/home/u/.ssh/id_ed25519",
+    }
+    credentials.set_passphrase(session["key_path"], "secret")
+
+    mgr = CredentialManager()
+    mgr.set_sessions([session])
+
+    assert mgr.tree.topLevelItemCount() == 2
+    assert mgr.tree.topLevelItem(1).text(1) == "/home/u/.ssh/id_ed25519"
+    assert mgr.tree.topLevelItem(1).text(2) == "Passphrase"
+    assert mgr.tree.topLevelItem(1).text(3) == "Saved"

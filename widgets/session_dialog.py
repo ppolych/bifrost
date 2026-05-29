@@ -58,6 +58,17 @@ class SessionDialog(QDialog):
         key_row_layout.addWidget(self.key_browse_btn)
         self.ssh_layout.addRow("Private key:", self.key_row)
 
+        self.cert_row = QWidget()
+        cert_row_layout = QHBoxLayout(self.cert_row)
+        cert_row_layout.setContentsMargins(0, 0, 0, 0)
+        self.cert_path_input = QLineEdit()
+        self.cert_path_input.setPlaceholderText("~/.ssh/id_ed25519-cert.pub")
+        self.cert_browse_btn = QPushButton("Browse...")
+        self.cert_browse_btn.clicked.connect(self._pick_cert_file)
+        cert_row_layout.addWidget(self.cert_path_input)
+        cert_row_layout.addWidget(self.cert_browse_btn)
+        self.ssh_layout.addRow("Certificate:", self.cert_row)
+
         self.passphrase_note = QLabel(
             "Passphrase (if any) is prompted at connect time and never stored."
         )
@@ -104,6 +115,15 @@ class SessionDialog(QDialog):
         known_row.addWidget(self.known_hosts_input)
         known_row.addWidget(known_browse)
         self.advanced_ssh_layout.addRow("Known hosts file:", known_row)
+
+        self.proxy_jump_input = QLineEdit()
+        self.proxy_jump_input.setPlaceholderText("bastion.example.com or user@bastion.example.com:22")
+        self.advanced_ssh_layout.addRow("ProxyJump:", self.proxy_jump_input)
+
+        self.proxy_command_input = QLineEdit()
+        self.proxy_command_input.setPlaceholderText("ssh -W %h:%p bastion.example.com")
+        self.advanced_ssh_layout.addRow("ProxyCommand:", self.proxy_command_input)
+
         self.tunnels_input = QTextEdit()
         self.tunnels_input.setPlaceholderText(
             "One tunnel per line, e.g.\n"
@@ -189,6 +209,13 @@ class SessionDialog(QDialog):
         if path:
             self.known_hosts_input.setText(path)
 
+    def _pick_cert_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select SSH certificate", "", "Public Certificates (*.pub);;All Files (*)"
+        )
+        if path:
+            self.cert_path_input.setText(path)
+
     def set_current_section(self, section: str) -> None:
         section_map = {
             "connection": self.conn_tab,
@@ -205,6 +232,7 @@ class SessionDialog(QDialog):
         is_key = label == "Private key"
         is_pwd = label == "Password"
         self.key_row.setEnabled(is_key)
+        self.cert_row.setEnabled(is_key)
         self.passphrase_note.setVisible(is_key)
         self.password_note.setVisible(is_pwd)
 
@@ -235,6 +263,7 @@ class SessionDialog(QDialog):
         self.port_input.setText(str(session.get("port", "22") or "22"))
         self._set_auth_value(session.get("auth", "agent"))
         self.key_path_input.setText(session.get("key_path") or "")
+        self.cert_path_input.setText(session.get("certificate_path") or "")
         self.command_input.setText(session.get("command") or "")
         self.mac_input.setText(session.get("mac") or "")
         self.broadcast_input.setText(session.get("wol_broadcast") or "")
@@ -245,6 +274,8 @@ class SessionDialog(QDialog):
         self.tcp_keepalive_cb.setChecked(bool(session.get("tcp_keepalive", True)))
         self.known_hosts_input.setText(session.get("known_hosts_file") or "")
         self.tunnels_input.setPlainText("\n".join(session.get("tunnels") or []))
+        self.proxy_jump_input.setText(session.get("proxy_jump") or "")
+        self.proxy_command_input.setText(session.get("proxy_command") or "")
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -284,12 +315,15 @@ class SessionDialog(QDialog):
                 "port": self.port_input.text(),
                 "auth": self._auth_value(),
                 "key_path": self.key_path_input.text().strip() or None,
+                "certificate_path": self.cert_path_input.text().strip() or None,
                 "command": self.command_input.text().strip() or None,
                 "connect_timeout": self.connect_timeout_sb.value(),
                 "agent_forwarding": self.agent_forwarding_cb.isChecked(),
                 "keepalive_interval": self.keepalive_sb.value(),
                 "tcp_keepalive": self.tcp_keepalive_cb.isChecked(),
                 "known_hosts_file": self.known_hosts_input.text().strip() or None,
+                "proxy_jump": self.proxy_jump_input.text().strip() or None,
+                "proxy_command": self.proxy_command_input.text().strip() or None,
                 "tunnels": [
                     line.strip()
                     for line in self.tunnels_input.toPlainText().splitlines()

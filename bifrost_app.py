@@ -106,6 +106,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.ssh_browser.focus_tab.connect(lambda i: self.tabs.setCurrentIndex(i))
         self.sidebar.ssh_browser.disconnect_tab.connect(self._disconnect_tab)
         self.sidebar.ssh_browser.reconnect_tab.connect(self._reconnect_tab)
+        self.sidebar.ssh_browser.reconnect_all.connect(self._reconnect_all_disconnected)
         self.sidebar.cred_widget.refresh_requested.connect(self._refresh_credentials_view)
         self.sidebar.cred_widget.forget_requested.connect(self.on_forget_credentials)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
@@ -175,6 +176,10 @@ class BifrostApp(QMainWindow):
         self.metrics_timer = QTimer(self)
         self.metrics_timer.timeout.connect(self.update_metrics)
         self.metrics_timer.start(2000)
+
+        self.ssh_state_timer = QTimer(self)
+        self.ssh_state_timer.timeout.connect(self._refresh_ssh_browser)
+        self.ssh_state_timer.start(1000)
         
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self.search_shortcut.activated.connect(self.toggle_terminal_search)
@@ -268,6 +273,9 @@ class BifrostApp(QMainWindow):
             reconnect_act = QAction("Reconnect tab", self)
             reconnect_act.triggered.connect(lambda: self._reconnect_tab(index))
             menu.addAction(reconnect_act)
+            reconnect_all_act = QAction("Reconnect all disconnected SSH tabs", self)
+            reconnect_all_act.triggered.connect(self._reconnect_all_disconnected)
+            menu.addAction(reconnect_all_act)
             sftp_act = QAction("Open SFTP here", self)
             sftp_act.triggered.connect(lambda: self._attach_sftp_for_tab(index))
             menu.addAction(sftp_act)
@@ -932,6 +940,7 @@ class BifrostApp(QMainWindow):
         container.detach_requested.connect(self.detach_terminal)
         self.tabs.addTab(container, prefix + name)
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        self._refresh_ssh_browser()
 
     def _session_from_backend(self, name: str, backend: ParamikoBackend) -> dict:
         creds = backend.creds
@@ -943,6 +952,7 @@ class BifrostApp(QMainWindow):
             "port": creds.port,
             "auth": creds.auth,
             "key_path": creds.key_filename,
+            "certificate_path": creds.certificate_filename,
             "command": creds.startup_command,
         }
 
@@ -1247,7 +1257,7 @@ class BifrostApp(QMainWindow):
             if backend is None:
                 continue
             if isinstance(backend, ParamikoBackend):
-                if not backend._closed and backend.channel is not None:
+                if backend.status in {"connecting", "connected"}:
                     return True
             else:
                 if not getattr(backend, "_closed", True):
@@ -1323,14 +1333,7 @@ class BifrostApp(QMainWindow):
             backend = self._ssh_backend_of(self.tabs.widget(i))
             if backend is None:
                 continue
-            if backend._closed:
-                status = "closed"
-            elif backend.connect_error is not None:
-                status = "failed"
-            elif backend.channel is not None:
-                status = "connected"
-            else:
-                status = "connecting"
+            status = backend.status
             connections.append(ActiveConnection(
                 tab_index=i,
                 host=backend.creds.host,
@@ -1339,6 +1342,36 @@ class BifrostApp(QMainWindow):
                 status=status,
             ))
         self.sidebar.ssh_browser.update_from_tabs(connections)
+        self._update_ssh_tab_indicators()
+
+    def _update_ssh_tab_indicators(self):
+        status_prefix = {
+            "connecting": "[...] ",
+            "connected": "[OK] ",
+            "disconnected": "[down] ",
+            "closed": "[closed] ",
+            "failed": "[failed] ",
+            "auth failed": "[auth] ",
+            "host-key failed": "[key] ",
+        }
+        known_prefixes = tuple(status_prefix.values())
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            backend = self._ssh_backend_of(widget)
+            if backend is None:
+                continue
+            text = self.tabs.tabText(i)
+            base = text
+            for prefix in known_prefixes:
+                if base.startswith(prefix):
+                    base = base[len(prefix):]
+                    break
+            status = backend.status
+            self.tabs.setTabText(i, status_prefix.get(status, "") + base)
+            self.tabs.setTabToolTip(
+                i,
+                f"{backend.creds.username}@{backend.creds.host}:{backend.creds.port} - {status}",
+            )
 
     def _refresh_credentials_view(self):
         """Walk the saved sessions tree and let the keyring view check what's stored."""
@@ -1380,15 +1413,41 @@ class BifrostApp(QMainWindow):
         if session is None:
             self.status_bar.showMessage("No SSH session details available for reconnect", 4000)
             return
+        new_backend = self._build_ssh_backend(session.get("name") or widget.name, session)
+        if new_backend is None:
+            return
         if backend is not None:
             backend.close()
-        old_name = self.tabs.tabText(tab_index)
+        old_text = self.tabs.tabText(tab_index)
         self.tabs.removeTab(tab_index)
         widget.deleteLater()
-        self.new_terminal_tab(session.get("name") or old_name, ssh_session=session)
+        container = TerminalContainer(
+            session.get("name") or widget.name,
+            None,
+            self.on_terminal_key,
+            settings=self.settings,
+            backend=new_backend,
+            ssh_session=session,
+        )
+        container.detach_requested.connect(self.detach_terminal)
+        self.tabs.insertTab(tab_index, container, old_text)
+        self.tabs.setCurrentIndex(tab_index)
         self._refresh_ssh_browser()
         self.status_bar.showMessage(
             f"Reconnecting {session.get('user', '')}@{session.get('host', '')}", 4000,
+        )
+
+    def _reconnect_all_disconnected(self):
+        targets: list[int] = []
+        for i in range(self.tabs.count()):
+            backend = self._ssh_backend_of(self.tabs.widget(i))
+            if backend is not None and backend.reconnectable:
+                targets.append(i)
+        for index in reversed(targets):
+            self._reconnect_tab(index)
+        self.status_bar.showMessage(
+            f"Reconnect requested for {len(targets)} SSH tab{'s' if len(targets) != 1 else ''}",
+            4000,
         )
 
     def _attach_sftp_for_tab(self, tab_index: int):

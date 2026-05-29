@@ -29,7 +29,7 @@ class ActiveConnection:
     host: str
     user: str
     port: int
-    status: str  # "connecting" | "connected" | "closed" | "failed"
+    status: str
 
 
 class SshBrowser(QWidget):
@@ -39,6 +39,7 @@ class SshBrowser(QWidget):
     focus_tab = pyqtSignal(int)        # tab_index
     disconnect_tab = pyqtSignal(int)   # tab_index
     reconnect_tab = pyqtSignal(int)    # tab_index
+    reconnect_all = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,9 +66,17 @@ class SshBrowser(QWidget):
         self.focus_btn.clicked.connect(self._focus_selected)
         self.reconnect_btn = QPushButton("Reconnect")
         self.reconnect_btn.clicked.connect(self._reconnect_selected)
+        self.reconnect_all_btn = QPushButton("Reconnect all")
+        self.reconnect_all_btn.clicked.connect(self.reconnect_all.emit)
         self.disconnect_btn = QPushButton("Disconnect")
         self.disconnect_btn.clicked.connect(self._disconnect_selected)
-        for b in (self.refresh_btn, self.focus_btn, self.reconnect_btn, self.disconnect_btn):
+        for b in (
+            self.refresh_btn,
+            self.focus_btn,
+            self.reconnect_btn,
+            self.reconnect_all_btn,
+            self.disconnect_btn,
+        ):
             btn_row.addWidget(b)
         self.layout.addLayout(btn_row)
 
@@ -86,6 +95,9 @@ class SshBrowser(QWidget):
                 "connected": QColor("#6fcf97"),
                 "connecting": QColor("#f2c94c"),
                 "failed": QColor("#eb5757"),
+                "auth failed": QColor("#eb5757"),
+                "host-key failed": QColor("#eb5757"),
+                "disconnected": QColor("#9aa0a6"),
                 "closed": QColor("#9aa0a6"),
             }.get(c.status, QColor("#cccccc"))
             for col in range(4):
