@@ -206,28 +206,30 @@ class SessionManager:
         if not new_name:
             return False
         container = self._list_at(parent_path)
-        if container is None or session not in container:
+        idx = _session_index(container, session) if container is not None else None
+        if container is None or idx is None:
             return False
-        if new_name == session.get("name"):
+        if new_name == container[idx].get("name"):
             return True
-        if any(s.get("name") == new_name for s in container if s is not session):
+        if any(i != idx and s.get("name") == new_name for i, s in enumerate(container)):
             raise ValueError(f"A session named “{new_name}” already exists here.")
-        session["name"] = new_name
+        container[idx]["name"] = new_name
         self.save()
         return True
 
     def update_session(self, parent_path, session: dict, new_data: dict) -> bool:
         """Replace a session dict in-place while preserving list position."""
         container = self._list_at(parent_path)
-        if container is None or session not in container:
+        idx = _session_index(container, session) if container is not None else None
+        if container is None or idx is None:
             return False
         new_name = (new_data.get("name") or "").strip()
         if not new_name:
             return False
-        if any(s.get("name") == new_name for s in container if s is not session):
+        if any(i != idx and s.get("name") == new_name for i, s in enumerate(container)):
             raise ValueError(f"A session named “{new_name}” already exists here.")
-        session.clear()
-        session.update(new_data)
+        container[idx].clear()
+        container[idx].update(new_data)
         self.save()
         return True
 
@@ -254,9 +256,10 @@ class SessionManager:
     def delete_session(self, parent_path, session: dict) -> bool:
         """Delete a session dict from the list at `parent_path`."""
         container = self._list_at(parent_path)
-        if container is None or session not in container:
+        idx = _session_index(container, session) if container is not None else None
+        if container is None or idx is None:
             return False
-        container.remove(session)
+        del container[idx]
         self.save()
         return True
 
@@ -286,13 +289,13 @@ class SessionManager:
         """Append a deep copy of `session` to the list at `parent_path` with
         a ‘(copy)’-suffixed name. Returns the new session dict, or None."""
         container = self._list_at(parent_path)
-        if container is None or session not in container:
+        idx = _session_index(container, session) if container is not None else None
+        if container is None or idx is None:
             return None
-        clone = copy.deepcopy(session)
+        clone = copy.deepcopy(container[idx])
         existing_names = {s.get("name", "") for s in container if isinstance(s, dict)}
-        clone["name"] = _uniquify_name(existing_names, f"{session.get('name', 'session')} (copy)")
-        idx = container.index(session) + 1
-        container.insert(idx, clone)
+        clone["name"] = _uniquify_name(existing_names, f"{container[idx].get('name', 'session')} (copy)")
+        container.insert(idx + 1, clone)
         self.save()
         return clone
 
@@ -325,6 +328,19 @@ def _uniquify_name(taken, name: str) -> str:
     while f"{name} ({i})" in taken:
         i += 1
     return f"{name} ({i})"
+
+
+def _session_index(container: list | None, session: dict) -> int | None:
+    """Return the index for a session object or an equal dict from Qt item data."""
+    if container is None:
+        return None
+    for i, item in enumerate(container):
+        if item is session:
+            return i
+    for i, item in enumerate(container):
+        if item == session:
+            return i
+    return None
 
 
 def _rename_dict_key(d: dict, old: str, new: str) -> None:

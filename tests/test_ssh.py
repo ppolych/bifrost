@@ -1,5 +1,6 @@
 """Tests for SSH backend and SFTP browser pieces that don't need a real server."""
 
+import os
 import posixpath
 from unittest.mock import MagicMock
 
@@ -87,6 +88,44 @@ def test_proxy_command_substitutes_host_and_port(monkeypatch):
 
     assert isinstance(backend._proxy_socket(), FakeProxy)
     assert commands == ["ssh -W target.example.com:2222 jump"]
+
+
+def test_load_private_key_with_explicit_certificate(monkeypatch):
+    from core import ssh_backend
+    from core.ssh_backend import ParamikoBackend, SshCredentials
+
+    calls = []
+
+    class FakeKey:
+        @classmethod
+        def from_private_key_file(cls, path, password=None):
+            calls.append(("load", path, password))
+            return cls()
+
+        def load_certificate(self, path):
+            calls.append(("cert", path))
+
+    class RejectKey:
+        @classmethod
+        def from_private_key_file(cls, path, password=None):
+            raise ssh_backend.paramiko.SSHException("wrong kind")
+
+    monkeypatch.setattr(ssh_backend.paramiko, "RSAKey", RejectKey)
+    monkeypatch.setattr(ssh_backend.paramiko, "ECDSAKey", FakeKey)
+
+    backend = ParamikoBackend(SshCredentials(
+        host="h",
+        username="u",
+        key_filename="~/.ssh/id",
+        certificate_filename="~/.ssh/custom-cert.pub",
+        passphrase="secret",
+    ))
+
+    assert isinstance(backend._load_private_key_with_certificate(), FakeKey)
+    assert calls == [
+        ("load", os.path.expanduser("~/.ssh/id"), "secret"),
+        ("cert", os.path.expanduser("~/.ssh/custom-cert.pub")),
+    ]
 
 
 def test_parse_local_remote_and_dynamic_tunnels():

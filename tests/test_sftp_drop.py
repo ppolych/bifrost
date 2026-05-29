@@ -417,6 +417,15 @@ def test_next_available_remote_name(browser):
     assert browser._next_available_remote_name("/home/user/a.txt") == "/home/user/a (2).txt"
 
 
+def test_remote_exists_treats_ssh_exception_as_missing(browser):
+    import paramiko
+
+    browser.sftp = MagicMock()
+    browser.sftp.stat.side_effect = paramiko.SSHException("channel closed")
+
+    assert browser._remote_exists("/home/user/a.txt") is False
+
+
 # ---------------------------------------------------------------------------
 # Tiny test double for QDropEvent — covers what dropEvent actually touches.
 # ---------------------------------------------------------------------------

@@ -386,10 +386,10 @@ class ParamikoBackend:
             elif self.creds.auth == "key":
                 if not self.creds.key_filename:
                     raise paramiko.SSHException("Key authentication selected but no key file provided")
-                key_files = [os.path.expanduser(self.creds.key_filename)]
                 if self.creds.certificate_filename:
-                    key_files.append(os.path.expanduser(self.creds.certificate_filename))
-                kwargs["key_filename"] = key_files
+                    kwargs["pkey"] = self._load_private_key_with_certificate()
+                else:
+                    kwargs["key_filename"] = [os.path.expanduser(self.creds.key_filename)]
                 if self.creds.passphrase:
                     kwargs["passphrase"] = self.creds.passphrase
             elif self.creds.auth == "agent":
@@ -588,6 +588,20 @@ class ParamikoBackend:
             command = f"ssh -W {shlex.quote(destination)} -p {port} {shlex.quote(target)}"
             return paramiko.proxy.ProxyCommand(command)
         return None
+
+    def _load_private_key_with_certificate(self) -> paramiko.PKey:
+        key_path = os.path.expanduser(self.creds.key_filename or "")
+        cert_path = os.path.expanduser(self.creds.certificate_filename or "")
+        errors: list[BaseException] = []
+        for key_cls in (paramiko.RSAKey, paramiko.ECDSAKey, paramiko.Ed25519Key):
+            try:
+                key = key_cls.from_private_key_file(key_path, password=self.creds.passphrase)
+                key.load_certificate(cert_path)
+                return key
+            except (OSError, paramiko.SSHException) as e:
+                errors.append(e)
+        detail = errors[-1] if errors else "unknown key type"
+        raise paramiko.SSHException(f"Could not load private key certificate pair: {detail}")
 
     @staticmethod
     def _parse_proxy_jump(value: str) -> tuple[str, str, int] | None:

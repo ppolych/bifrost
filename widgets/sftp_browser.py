@@ -727,7 +727,7 @@ class SftpBrowser(QWidget):
         try:
             self.sftp.stat(remote)
             return True
-        except OSError:
+        except (OSError, paramiko.SSHException):
             return False
 
     def _resolve_upload_conflicts(self, queue: list[tuple[str, str]]) -> list[tuple[str, str]]:

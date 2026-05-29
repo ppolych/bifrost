@@ -114,6 +114,13 @@ def test_rename_session(sm):
     assert sm.rename_session(["Group A"], session, "alpha-prime") is True
     assert session["name"] == "alpha-prime"
 
+
+def test_rename_session_accepts_equal_qt_copy(sm):
+    session_copy = dict(sm.sessions["Group A"][0])
+    assert sm.rename_session(["Group A"], session_copy, "alpha-prime") is True
+    assert sm.sessions["Group A"][0]["name"] == "alpha-prime"
+
+
 def test_rename_session_refuses_on_collision(sm):
     session = sm.sessions["Group A"][0]
     with pytest.raises(ValueError):
@@ -127,6 +134,13 @@ def test_update_session_preserves_position(sm):
     assert sm.sessions["Group A"][0]["host"] == "h"
 
 
+def test_update_session_accepts_equal_qt_copy_without_name_collision(sm):
+    session_copy = dict(sm.sessions["Group A"][0])
+    assert sm.update_session(["Group A"], session_copy, {"name": "alpha", "type": "SSH", "host": "new"})
+    assert sm.sessions["Group A"][0]["name"] == "alpha"
+    assert sm.sessions["Group A"][0]["host"] == "new"
+
+
 def test_update_session_refuses_name_collision(sm):
     session = sm.sessions["Group A"][0]
     with pytest.raises(ValueError):
@@ -138,6 +152,12 @@ def test_update_session_refuses_name_collision(sm):
 def test_delete_session(sm):
     session = sm.sessions["Group A"][0]
     assert sm.delete_session(["Group A"], session) is True
+    assert [s["name"] for s in sm.sessions["Group A"]] == ["beta"]
+
+
+def test_delete_session_accepts_equal_qt_copy(sm):
+    session_copy = dict(sm.sessions["Group A"][0])
+    assert sm.delete_session(["Group A"], session_copy) is True
     assert [s["name"] for s in sm.sessions["Group A"]] == ["beta"]
 
 
@@ -186,6 +206,16 @@ def test_duplicate_session_inserts_after_original(sm):
     assert clone["name"] == "alpha (copy)"
     names = [s["name"] for s in sm.sessions["Group A"]]
     assert names == ["alpha", "alpha (copy)", "beta"]
+
+
+def test_duplicate_session_accepts_equal_qt_copy(sm):
+    session_copy = dict(sm.sessions["Group A"][0])
+    clone = sm.duplicate_session(["Group A"], session_copy)
+    assert clone is not None
+    assert clone["name"] == "alpha (copy)"
+    names = [s["name"] for s in sm.sessions["Group A"]]
+    assert names == ["alpha", "alpha (copy)", "beta"]
+
 
 def test_duplicate_session_uniquifies_when_copy_exists(sm):
     session = sm.sessions["Group A"][0]
