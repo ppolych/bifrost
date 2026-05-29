@@ -32,6 +32,8 @@ from widgets.credential_manager import CredentialManager
 from widgets.local_servers import LocalServersManager
 from widgets.sftp_browser import SftpBrowser
 from widgets.ssh_browser import SshBrowser
+from widgets.snippet_manager import SnippetWidget
+from widgets.docker_dashboard import DockerDashboard
 
 class Sidebar(QWidget):
     tool_triggered = pyqtSignal(str)
@@ -43,12 +45,15 @@ class Sidebar(QWidget):
     edit_session_requested = pyqtSignal(list, dict)
     edit_session_section_requested = pyqtSignal(list, dict, str)
     macro_triggered = pyqtSignal(str)
+    snippet_triggered = pyqtSignal(str)
+    container_shell_requested = pyqtSignal(str, list)
     collapse_requested = pyqtSignal(bool)
     
-    def __init__(self, session_manager, macro_engine):
+    def __init__(self, session_manager, macro_engine, snippet_manager):
         super().__init__()
         self.session_manager = session_manager
         self.macro_engine = macro_engine
+        self.snippet_manager = snippet_manager
         self.is_collapsed = False
         self.setMinimumWidth(140)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -208,6 +213,18 @@ class Sidebar(QWidget):
         self.macro_layout.addWidget(self.record_btn)
         self.tabs.addTab(self.macro_widget, named_icon("code.svg"), "")
         self.tabs.setTabToolTip(5, "Macros")
+
+        # 7. Snippets Tab
+        self.snippet_widget = SnippetWidget(self.snippet_manager)
+        self.snippet_widget.snippet_triggered.connect(self.snippet_triggered.emit)
+        self.tabs.addTab(self.snippet_widget, named_icon("list_alt.svg"), "")
+        self.tabs.setTabToolTip(6, "Command Snippets")
+
+        # 8. Docker Tab
+        self.docker_widget = DockerDashboard()
+        self.docker_widget.container_shell_requested.connect(self.container_shell_requested.emit)
+        self.tabs.addTab(self.docker_widget, named_icon("desktop_windows.svg"), "")
+        self.tabs.setTabToolTip(7, "Docker Containers")
 
         # SFTP browser — sibling of the tab widget, persistent.
         self.sftp_widget = SftpBrowser()

@@ -38,6 +38,7 @@ from core.logging_setup import _log_path, configure_logging
 from core.mobaxterm_import import parse_mobaxterm_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
+from core.snippets import SnippetManager
 from core.network_tools import scan_ports, scan_ip_range
 from core.platform_utils import config_dir, default_monospace_font, migrate_legacy_config
 from core.settings_store import load_settings, save_settings
@@ -59,6 +60,7 @@ class BifrostApp(QMainWindow):
         self.session_manager = SessionManager()
         self.workspace_manager = WorkspaceManager()
         self.macro_engine = MacroEngine()
+        self.snippet_manager = SnippetManager()
         self.host_key_prompter = HostKeyPrompter(self)
         self.setStyleSheet(get_dark_theme())
         self.detached_windows = []
@@ -88,7 +90,7 @@ class BifrostApp(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Sidebar
-        self.sidebar = Sidebar(self.session_manager, self.macro_engine)
+        self.sidebar = Sidebar(self.session_manager, self.macro_engine, self.snippet_manager)
         self.sidebar.session_activated.connect(self.on_session_activated)
         self.sidebar.favorite_toggled.connect(self.on_favorite_toggled)
         self.sidebar.forget_credentials.connect(self.on_forget_credentials)
@@ -114,6 +116,10 @@ class BifrostApp(QMainWindow):
         self.sidebar.sftp_widget.set_show_hidden(self.settings.get("sftp_show_hidden", False))
         self.sidebar.tool_triggered.connect(self.on_tool_triggered)
         self.sidebar.macro_triggered.connect(self.run_macro)
+        self.sidebar.snippet_triggered.connect(self.run_snippet)
+        self.sidebar.container_shell_requested.connect(
+            lambda name, cmd: self.new_terminal_tab(name, command=cmd)
+        )
         self.sidebar.record_btn.clicked.connect(self.toggle_macro_recording)
         self.sidebar.collapse_requested.connect(self.on_sidebar_collapsed)
         
@@ -478,6 +484,13 @@ class BifrostApp(QMainWindow):
             term = current_tab.findChild(TerminalWidget)
             if term:
                 for key in macro: term.write_to_backend(key)
+
+    def run_snippet(self, text):
+        current_tab = self.tabs.currentWidget()
+        if isinstance(current_tab, TerminalContainer) and text:
+            term = current_tab.findChild(TerminalWidget)
+            if term:
+                term.write_to_backend(text)
 
     def toggle_macro_recording(self):
         if not self.macro_engine.recording:

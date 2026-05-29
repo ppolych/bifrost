@@ -14,11 +14,14 @@ def sidebar(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(persistence, "config_path", lambda name: str(tmp_path / name))
     import core.macro_engine as macro_engine
     monkeypatch.setattr(macro_engine, "config_path", lambda name: str(tmp_path / name))
+    import core.snippets as snippets
+    monkeypatch.setattr(snippets, "config_path", lambda name: str(tmp_path / name))
 
     from widgets.sidebar import Sidebar
     sm = persistence.SessionManager()
     me = macro_engine.MacroEngine()
-    return Sidebar(sm, me)
+    sn = snippets.SnippetManager()
+    return Sidebar(sm, me, sn)
 
 
 def test_sftp_is_not_a_tab(sidebar):
@@ -37,6 +40,8 @@ def test_tab_indexes_match_documented_order(sidebar):
     assert "servers" in tooltips[3].lower()
     assert "Tools" in tooltips[4]
     assert "Macros" in tooltips[5]
+    assert "Snippets" in tooltips[6]
+    assert "Docker" in tooltips[7]
 
 
 def test_sftp_widget_is_in_the_splitter(sidebar):

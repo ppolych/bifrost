@@ -34,3 +34,10 @@ class SearchBar(QFrame):
         self.close_btn.setFixedWidth(30)
         self.close_btn.clicked.connect(self.closed.emit)
         layout.addWidget(self.close_btn)
+
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: #888; font-size: 10px; margin-left: 10px;")
+        layout.addWidget(self.status_label)
+
+    def set_status(self, text):
+        self.status_label.setText(text)

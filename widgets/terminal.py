@@ -160,6 +160,9 @@ class TerminalWidget(QAbstractScrollArea):
         self._selection: tuple[int, int, int, int] | None = None
         self._dragging = False
 
+        self._last_search_text = ""
+        self._search_index = -1
+
         self._apply_font_metrics()
         self.apply_settings()
 
@@ -703,6 +706,46 @@ class TerminalWidget(QAbstractScrollArea):
         menu.addAction(QAction("Detach terminal", self, triggered=self.detach_requested.emit))
         menu.addAction(QAction("Clear scrollback", self, triggered=self._clear_scrollback))
         menu.exec(self.viewport().mapToGlobal(position))
+
+    def search(self, text: str, forward: bool = True) -> int:
+        """Search for text in the visible buffer and highlight the result.
+        
+        Returns the number of matches found.
+        """
+        if not text:
+            self.clear_selection()
+            self._last_search_text = ""
+            return 0
+        
+        lines = self._screen_lines()
+        matches = []
+        for r, line in enumerate(lines):
+            start = 0
+            while True:
+                idx = line.find(text, start)
+                if idx == -1:
+                    break
+                matches.append((r, idx, idx + len(text)))
+                start = idx + 1
+        
+        if not matches:
+            self.clear_selection()
+            return 0
+            
+        if text != self._last_search_text:
+            self._last_search_text = text
+            # Start from the first match if searching forward, last if backward
+            self._search_index = 0 if forward else len(matches) - 1
+        else:
+            if forward:
+                self._search_index = (self._search_index + 1) % len(matches)
+            else:
+                self._search_index = (self._search_index - 1) % len(matches)
+        
+        r, c1, c2 = matches[self._search_index]
+        self._selection = (r, c1, r, c2 - 1)
+        self.viewport().update()
+        return len(matches)
 
     def _line_text(self, line) -> str:
         chars = []

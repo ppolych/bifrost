@@ -74,7 +74,11 @@ class TerminalContainer(QWidget):
             self.search_bar.input.setFocus()
 
     def perform_search(self, text, forward):
-        # In-terminal search across the pyte buffer is not implemented yet.
-        # For now we surface a hint via the search bar so the user knows.
-        if hasattr(self.search_bar, "set_status"):
-            self.search_bar.set_status("Search inside terminal not implemented yet")
+        count = self.primary_terminal.search(text, forward)
+        if text:
+            if count > 0:
+                self.search_bar.set_status(f"{count} match{'es' if count != 1 else ''}")
+            else:
+                self.search_bar.set_status("No matches")
+        else:
+            self.search_bar.set_status("")
