@@ -1017,6 +1017,22 @@ class BifrostApp(QMainWindow):
                 creds.password = text
                 save_password = remember and credential_policy != "never"
         elif creds.auth == "key":
+            if not creds.key_filename:
+                key_path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "Select SSH private key",
+                    os.path.expanduser("~/.ssh"),
+                    "Private keys (*)",
+                )
+                if not key_path:
+                    QMessageBox.warning(
+                        self,
+                        "SSH key required",
+                        "This session is configured for private-key authentication, but no key file is set.",
+                    )
+                    return None
+                creds.key_filename = key_path
+                session["key_path"] = key_path
             stored = credentials.get_passphrase(creds.key_filename or "")
             if stored is not None:
                 creds.passphrase = stored
