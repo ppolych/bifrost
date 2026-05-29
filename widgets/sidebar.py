@@ -9,6 +9,11 @@ from PyQt6.QtGui import QAction
 from core.icons import folder_icon, named_icon, session_icon
 
 
+class _SessionRef:
+    def __init__(self, session: dict):
+        self.session = session
+
+
 def _session_tooltip(session: dict) -> str:
     """Human-readable session details for hover. Falls back to just the name
     when the session dict is sparse (Local sessions, etc.)."""
@@ -276,6 +281,12 @@ class Sidebar(QWidget):
     # path of their containing folder. Both as a list[str] from root.
     PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 
+    def _session_for_item(self, item):
+        ref = item.data(0, self.SESSION_ROLE) if item is not None else None
+        if isinstance(ref, _SessionRef):
+            return ref.session
+        return ref if isinstance(ref, dict) else None
+
     def refresh_sessions(self):
         self.tree.clear()
         self._populate_tree(self.session_manager.sessions, self.tree, [])
@@ -299,7 +310,7 @@ class Sidebar(QWidget):
             ):
                 item = QTreeWidgetItem(parent, [s.get("name", "<unnamed>")])
                 item.setIcon(0, session_icon(s))
-                item.setData(0, self.SESSION_ROLE, s)
+                item.setData(0, self.SESSION_ROLE, _SessionRef(s))
                 item.setData(0, self.PATH_ROLE, list(path))
                 # Tooltip carries the full session identity so a narrow sidebar
                 # never hides what you're about to connect to.
@@ -329,7 +340,7 @@ class Sidebar(QWidget):
             QTreeWidgetItem(self.macro_tree, [name])
 
     def on_session_click(self, item, column):
-        session = item.data(0, self.SESSION_ROLE)
+        session = self._session_for_item(item)
         if session:
             self.session_activated.emit(session)
 
@@ -344,13 +355,13 @@ class Sidebar(QWidget):
     def _show_tree_context_menu(self, pos):
         item = self.tree.itemAt(pos)
         menu = QMenu(self)
+        session = self._session_for_item(item)
 
         if item is None:
             act_group = QAction("New top-level group…", self)
             act_group.triggered.connect(lambda: self._prompt_new_group([]))
             menu.addAction(act_group)
-        elif item.data(0, self.SESSION_ROLE):
-            session = item.data(0, self.SESSION_ROLE)
+        elif session:
             parent_path = list(item.data(0, self.PATH_ROLE) or [])
             is_fav = bool(session.get("favorite"))
             toggle = QAction("Remove favorite" if is_fav else "Mark as favorite", self)
@@ -525,7 +536,7 @@ class Sidebar(QWidget):
             QMessageBox.warning(self, "Can't delete session", "Session not found.")
 
     def _toggle_favorite(self, item):
-        session = item.data(0, self.SESSION_ROLE)
+        session = self._session_for_item(item)
         if not session:
             return
         new_state = not bool(session.get("favorite"))

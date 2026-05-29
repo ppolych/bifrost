@@ -77,6 +77,23 @@ def test_session_filter_shows_matching_group(sidebar):
     assert visible == ["Work Folders"]
 
 
+def test_session_items_keep_live_session_object(sidebar):
+    sidebar.session_manager.sessions = {
+        "User sessions": [
+            {"name": "same", "type": "SSH", "host": "one"},
+            {"name": "same", "type": "SSH", "host": "two"},
+        ],
+    }
+    sidebar.refresh_sessions()
+
+    group = sidebar.tree.topLevelItem(0)
+    first = group.child(0)
+    second = group.child(1)
+
+    assert sidebar._session_for_item(first) is sidebar.session_manager.sessions["User sessions"][0]
+    assert sidebar._session_for_item(second) is sidebar.session_manager.sessions["User sessions"][1]
+
+
 def test_show_and_hide_sftp_pane(sidebar):
     sidebar.show_sftp_pane(sizes=(400, 300))
     assert sidebar.content_splitter.sizes()[1] > 0
