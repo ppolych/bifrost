@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -30,6 +31,7 @@ class ActiveConnection:
     user: str
     port: int
     status: str
+    tunnels: list[dict] | None = None
 
 
 class SshBrowser(QWidget):
@@ -40,6 +42,7 @@ class SshBrowser(QWidget):
     disconnect_tab = pyqtSignal(int)   # tab_index
     reconnect_tab = pyqtSignal(int)    # tab_index
     reconnect_all = pyqtSignal()
+    stop_tunnel = pyqtSignal(int, int)  # tab_index, tunnel_index
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -50,13 +53,15 @@ class SshBrowser(QWidget):
         self.layout.addWidget(self.label)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Host", "User", "Port", "Status"])
+        self.tree.setHeaderLabels(["Host", "User", "Port", "Status", "Tunnels"])
         self.tree.setRootIsDecorated(False)
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.tree.setStyleSheet(
             "QTreeWidget { background-color: #2b2b2b; color: #ccc; border: none; }"
         )
         self.tree.itemDoubleClicked.connect(self._on_double_click)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.layout.addWidget(self.tree)
 
         btn_row = QHBoxLayout()
@@ -85,12 +90,16 @@ class SshBrowser(QWidget):
     def update_from_tabs(self, connections: list[ActiveConnection]) -> None:
         self.tree.clear()
         if not connections:
-            placeholder = QTreeWidgetItem(self.tree, ["(no active SSH sessions)", "", "", ""])
+            placeholder = QTreeWidgetItem(self.tree, ["(no active SSH sessions)", "", "", "", ""])
             placeholder.setDisabled(True)
             return
         for c in connections:
-            item = QTreeWidgetItem(self.tree, [c.host, c.user, str(c.port), c.status])
+            tunnels = c.tunnels or []
+            active_tunnels = [t for t in tunnels if t.get("active")]
+            tunnel_text = str(len(active_tunnels)) if active_tunnels else ""
+            item = QTreeWidgetItem(self.tree, [c.host, c.user, str(c.port), c.status, tunnel_text])
             item.setData(0, Qt.ItemDataRole.UserRole, c.tab_index)
+            item.setData(0, Qt.ItemDataRole.UserRole + 1, tunnels)
             color = {
                 "connected": QColor("#6fcf97"),
                 "connecting": QColor("#f2c94c"),
@@ -100,9 +109,14 @@ class SshBrowser(QWidget):
                 "disconnected": QColor("#9aa0a6"),
                 "closed": QColor("#9aa0a6"),
             }.get(c.status, QColor("#cccccc"))
-            for col in range(4):
+            for col in range(5):
                 item.setForeground(col, color)
             item.setToolTip(3, f"SSH session is {c.status}")
+            if tunnels:
+                item.setToolTip(4, "\n".join(
+                    f"{t.get('label')} - {'active' if t.get('active') else 'stopped'}"
+                    for t in tunnels
+                ))
 
     def _selected_tab_index(self) -> Optional[int]:
         item = self.tree.currentItem()
@@ -130,3 +144,32 @@ class SshBrowser(QWidget):
         idx = item.data(0, Qt.ItemDataRole.UserRole)
         if idx is not None:
             self.focus_tab.emit(int(idx))
+
+    def _show_context_menu(self, pos) -> None:
+        item = self.tree.itemAt(pos)
+        idx = item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        if idx is None:
+            return
+        menu = QMenu(self)
+        focus = menu.addAction("Focus tab")
+        focus.triggered.connect(lambda: self.focus_tab.emit(int(idx)))
+        reconnect = menu.addAction("Reconnect")
+        reconnect.triggered.connect(lambda: self.reconnect_tab.emit(int(idx)))
+        disconnect = menu.addAction("Disconnect")
+        disconnect.triggered.connect(lambda: self.disconnect_tab.emit(int(idx)))
+        tunnels = item.data(0, Qt.ItemDataRole.UserRole + 1) or []
+        if tunnels:
+            menu.addSeparator()
+            tunnel_menu = menu.addMenu("SSH tunnels")
+            for tunnel in tunnels:
+                label = tunnel.get("label", "Tunnel")
+                active = bool(tunnel.get("active"))
+                tunnel_index = int(tunnel.get("index", -1))
+                action = tunnel_menu.addAction(
+                    f"Stop {label}" if active else f"{label} (stopped)"
+                )
+                action.setEnabled(active and tunnel_index >= 0)
+                action.triggered.connect(
+                    lambda _checked=False, ti=tunnel_index: self.stop_tunnel.emit(int(idx), ti)
+                )
+        menu.exec(self.tree.mapToGlobal(pos))

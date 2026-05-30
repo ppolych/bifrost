@@ -369,6 +369,17 @@ class SftpBrowser(QWidget):
         self.layout.addWidget(self.transfer_panel)
         self._transfer_mode: Optional[str] = None
         self._transfer_name: str = ""
+        self._active_transfer_row: QTreeWidgetItem | None = None
+
+        self.transfer_queue = QTreeWidget()
+        self.transfer_queue.setHeaderLabels(["Status", "Operation", "Item"])
+        self.transfer_queue.setRootIsDecorated(False)
+        self.transfer_queue.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.transfer_queue.setMaximumHeight(96)
+        self.transfer_queue.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.transfer_queue.customContextMenuRequested.connect(self._show_transfer_context_menu)
+        self.transfer_queue.hide()
+        self.layout.addWidget(self.transfer_queue)
 
         self._set_buttons_enabled(False)
 
@@ -401,6 +412,9 @@ class SftpBrowser(QWidget):
         self.tree.clear()
         self.path_label.setText("Not connected")
         self._reset_transfer_progress()
+        self._upload_queue.clear()
+        self.transfer_queue.clear()
+        self.transfer_queue.hide()
         self._set_buttons_enabled(False)
 
     def is_attached(self) -> bool:
@@ -829,6 +843,7 @@ class SftpBrowser(QWidget):
     def _start_transfer(self, mode: str, local: str, remote: str) -> None:
         self._begin_transfer_progress(mode, local, remote)
         self._set_buttons_enabled(False)
+        self._mark_transfer_active(mode, local, remote)
 
         t = _TransferThread(self.sftp, mode, local, remote)
         t.progress.connect(self._on_transfer_progress)
@@ -887,12 +902,14 @@ class SftpBrowser(QWidget):
         self.progress.setFormat("100%")
         self.transfer_status.setText(message)
         self.transfer_panel.show()
+        self._mark_transfer_finished("Done")
         self.path_label.setText(f"{self.cwd}   ·   {message}")
         self._refresh()
 
     def _on_transfer_failed(self, message: str) -> None:
         self.transfer_status.setText(f"Transfer failed: {message}")
         self.transfer_panel.show()
+        self._mark_transfer_finished("Failed")
         QMessageBox.warning(self, "SFTP transfer failed", message)
 
     def _cleanup_transfer(self) -> None:
@@ -902,7 +919,82 @@ class SftpBrowser(QWidget):
         # Chain into the next queued upload (drag-and-drop with multiple files).
         if self._upload_queue and self.sftp is not None:
             local, remote = self._upload_queue.pop(0)
+            self._remove_queued_transfer(local, remote)
             self._start_transfer("upload", local, remote)
+
+    def _add_queued_transfer(self, mode: str, local: str, remote: str) -> None:
+        item = QTreeWidgetItem(self.transfer_queue, [
+            "Queued",
+            "Upload" if mode == "upload" else "Download",
+            os.path.basename(local) if mode == "upload" else posixpath.basename(remote),
+        ])
+        item.setData(0, Qt.ItemDataRole.UserRole, {
+            "mode": mode,
+            "local": local,
+            "remote": remote,
+            "status": "Queued",
+        })
+        self.transfer_queue.show()
+
+    def _mark_transfer_active(self, mode: str, local: str, remote: str) -> None:
+        self._remove_queued_transfer(local, remote)
+        item = QTreeWidgetItem(self.transfer_queue, [
+            "Active",
+            "Upload" if mode == "upload" else "Download",
+            os.path.basename(local) if mode == "upload" else posixpath.basename(remote),
+        ])
+        item.setData(0, Qt.ItemDataRole.UserRole, {
+            "mode": mode,
+            "local": local,
+            "remote": remote,
+            "status": "Active",
+        })
+        self._active_transfer_row = item
+        self.transfer_queue.show()
+
+    def _mark_transfer_finished(self, status: str) -> None:
+        item = self._active_transfer_row
+        if item is None:
+            return
+        meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        meta["status"] = status
+        item.setData(0, Qt.ItemDataRole.UserRole, meta)
+        item.setText(0, status)
+        self._active_transfer_row = None
+        self.transfer_queue.show()
+
+    def _remove_queued_transfer(self, local: str, remote: str) -> None:
+        root = self.transfer_queue.invisibleRootItem()
+        for i in range(root.childCount() - 1, -1, -1):
+            item = root.child(i)
+            meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+            if (
+                meta.get("status") == "Queued"
+                and meta.get("local") == local
+                and meta.get("remote") == remote
+            ):
+                root.removeChild(item)
+
+    def _show_transfer_context_menu(self, pos) -> None:
+        item = self.transfer_queue.itemAt(pos)
+        if item is None:
+            return
+        meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        menu = QMenu(self)
+        if meta.get("status") == "Failed":
+            retry = menu.addAction("Retry transfer")
+            retry.triggered.connect(lambda: self._retry_transfer(meta))
+        if meta.get("status") == "Active":
+            cancel = menu.addAction("Cancel transfer")
+            cancel.triggered.connect(self._cancel_transfer)
+        clear = menu.addAction("Clear row")
+        clear.triggered.connect(lambda: self.transfer_queue.invisibleRootItem().removeChild(item))
+        menu.exec(self.transfer_queue.mapToGlobal(pos))
+
+    def _retry_transfer(self, meta: dict) -> None:
+        if self.sftp is None or self._transfer is not None:
+            return
+        self._start_transfer(meta.get("mode", "upload"), meta.get("local", ""), meta.get("remote", ""))
 
     # ----- drag-and-drop uploads -----
 
@@ -968,9 +1060,13 @@ class SftpBrowser(QWidget):
             return
         if self._transfer is not None:
             self._upload_queue.extend(new_queue)
+            for local, remote in new_queue:
+                self._add_queued_transfer("upload", local, remote)
         else:
             first_local, first_remote = new_queue[0]
             self._upload_queue.extend(new_queue[1:])
+            for local, remote in new_queue[1:]:
+                self._add_queued_transfer("upload", local, remote)
             self._start_transfer("upload", first_local, first_remote)
 
         event.acceptProposedAction()

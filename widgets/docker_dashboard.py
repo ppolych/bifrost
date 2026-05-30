@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
-    QPushButton, QHBoxLayout, QLabel
+    QPushButton, QHBoxLayout, QLabel, QMenu, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer
+from PyQt6.QtGui import QAction
 from core.icons import named_icon
 from core import docker_utils
 
@@ -19,6 +20,8 @@ class DockerDashboard(QWidget):
         self.tree.setHeaderLabels(["Container", "Status"])
         self.tree.setColumnWidth(0, 150)
         self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
         layout.addWidget(self.tree)
 
         btn_row = QHBoxLayout()
@@ -58,3 +61,33 @@ class DockerDashboard(QWidget):
         if name:
             cmd = docker_utils.exec_shell_command(name)
             self.container_shell_requested.emit(f"Docker: {name}", cmd)
+
+    def _show_context_menu(self, pos):
+        item = self.tree.itemAt(pos)
+        name = item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        if not name:
+            return
+        menu = QMenu(self)
+        shell = QAction("Open shell", self)
+        shell.triggered.connect(lambda: self.container_shell_requested.emit(
+            f"Docker: {name}", docker_utils.exec_shell_command(name)
+        ))
+        menu.addAction(shell)
+        logs = QAction("Follow logs", self)
+        logs.triggered.connect(lambda: self.container_shell_requested.emit(
+            f"Docker logs: {name}", docker_utils.logs_command(name)
+        ))
+        menu.addAction(logs)
+        menu.addSeparator()
+        for action in ("start", "stop", "restart"):
+            act = QAction(action.capitalize(), self)
+            act.triggered.connect(lambda _checked=False, a=action: self._run_action(name, a))
+            menu.addAction(act)
+        menu.exec(self.tree.mapToGlobal(pos))
+
+    def _run_action(self, name, action):
+        ok, error = docker_utils.container_action(name, action)
+        if not ok:
+            QMessageBox.warning(self, "Docker", error or f"docker {action} failed")
+            return
+        self.refresh()

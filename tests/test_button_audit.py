@@ -197,6 +197,29 @@ def test_ssh_browser_emits_reconnect_all(qapp):
     assert received == [True]
 
 
+def test_ssh_browser_shows_tunnel_count(qapp):
+    from widgets.ssh_browser import ActiveConnection, SshBrowser
+
+    b = SshBrowser()
+    b.update_from_tabs([
+        ActiveConnection(
+            tab_index=1,
+            host="h",
+            user="u",
+            port=22,
+            status="connected",
+            tunnels=[
+                {"index": 0, "label": "L 127.0.0.1:15432 db:5432", "active": True},
+                {"index": 1, "label": "D 127.0.0.1:1080", "active": False},
+            ],
+        ),
+    ])
+
+    item = b.tree.topLevelItem(0)
+    assert item.text(4) == "1"
+    assert "15432" in item.toolTip(4)
+
+
 # ---------------------------------------------------------------------------
 # CredentialManager
 # ---------------------------------------------------------------------------

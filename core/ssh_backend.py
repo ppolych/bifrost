@@ -114,6 +114,10 @@ class _BaseForwarder:
     def stop(self) -> None:
         self._stop.set()
 
+    @property
+    def active(self) -> bool:
+        return not self._stop.is_set()
+
 
 class LocalPortForwarder(_BaseForwarder):
     def __init__(self, transport: paramiko.Transport, spec: TunnelSpec):
@@ -642,3 +646,19 @@ class ParamikoBackend:
                 log.info("started SSH tunnel %s", spec.label)
             except Exception as e:
                 raise paramiko.SSHException(f"Failed to start tunnel {raw!r}: {e}") from e
+
+    def tunnel_statuses(self) -> list[dict]:
+        return [
+            {
+                "index": i,
+                "label": forwarder.spec.label,
+                "active": forwarder.active,
+            }
+            for i, forwarder in enumerate(self._forwarders)
+        ]
+
+    def stop_tunnel(self, index: int) -> bool:
+        if index < 0 or index >= len(self._forwarders):
+            return False
+        self._forwarders[index].stop()
+        return True

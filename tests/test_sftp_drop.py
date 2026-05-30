@@ -160,6 +160,20 @@ def test_cleanup_transfer_chains_queue(browser, monkeypatch):
     assert browser._upload_queue == [("/b", "/r/b")]
 
 
+def test_transfer_queue_records_queued_and_done(browser):
+    browser._add_queued_transfer("upload", "/tmp/a.txt", "/remote/a.txt")
+    assert browser.transfer_queue.topLevelItemCount() == 1
+    assert browser.transfer_queue.topLevelItem(0).text(0) == "Queued"
+
+    browser._mark_transfer_active("upload", "/tmp/a.txt", "/remote/a.txt")
+    assert browser.transfer_queue.topLevelItemCount() == 1
+    active = browser.transfer_queue.topLevelItem(0)
+    assert active.text(0) == "Active"
+
+    browser._mark_transfer_finished("Done")
+    assert active.text(0) == "Done"
+
+
 def test_cleanup_transfer_hides_progress_when_queue_empty(browser):
     browser._begin_transfer_progress("download", "C:/tmp/report.log", "/var/log/report.log")
     browser._transfer = MagicMock()

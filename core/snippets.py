@@ -27,10 +27,21 @@ class SnippetManager:
             log.exception("Failed to save snippets to %s", self.filename)
 
     def add_snippet(self, group, name, command):
+        group = (group or "").strip()
+        name = (name or "").strip()
+        command = (command or "").strip()
+        if not group or not name or not command:
+            raise ValueError("Group, name, and command are required")
         if group not in self.snippets:
             self.snippets[group] = {}
         self.snippets[group][name] = command
         self.save()
+
+    def update_snippet(self, group, old_name, new_group, new_name, command):
+        if self.delete_snippet(group, old_name):
+            self.add_snippet(new_group, new_name, command)
+            return True
+        return False
 
     def delete_snippet(self, group, name):
         if group in self.snippets and name in self.snippets[group]:

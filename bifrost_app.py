@@ -107,6 +107,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.ssh_browser.disconnect_tab.connect(self._disconnect_tab)
         self.sidebar.ssh_browser.reconnect_tab.connect(self._reconnect_tab)
         self.sidebar.ssh_browser.reconnect_all.connect(self._reconnect_all_disconnected)
+        self.sidebar.ssh_browser.stop_tunnel.connect(self._stop_ssh_tunnel)
         self.sidebar.cred_widget.refresh_requested.connect(self._refresh_credentials_view)
         self.sidebar.cred_widget.forget_requested.connect(self.on_forget_credentials)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
@@ -493,12 +494,34 @@ class BifrostApp(QMainWindow):
             if term:
                 for key in macro: term.write_to_backend(key)
 
-    def run_snippet(self, text):
+    def run_snippet(self, text, execute=False):
         current_tab = self.tabs.currentWidget()
         if isinstance(current_tab, TerminalContainer) and text:
             term = current_tab.findChild(TerminalWidget)
             if term:
+                text = self._expand_snippet(text)
+                if execute and not text.endswith(("\n", "\r")):
+                    text += "\r"
                 term.write_to_backend(text)
+
+    def _expand_snippet(self, text: str) -> str:
+        current_tab = self.tabs.currentWidget()
+        session = current_tab.ssh_session if isinstance(current_tab, TerminalContainer) else None
+        values = {
+            "host": "",
+            "user": "",
+            "port": "",
+        }
+        if isinstance(session, dict):
+            values.update({
+                "host": str(session.get("host") or ""),
+                "user": str(session.get("user") or ""),
+                "port": str(session.get("port") or ""),
+            })
+        try:
+            return text.format(**values)
+        except (KeyError, ValueError):
+            return text
 
     def toggle_macro_recording(self):
         if not self.macro_engine.recording:
@@ -1356,6 +1379,7 @@ class BifrostApp(QMainWindow):
                 user=backend.creds.username,
                 port=backend.creds.port,
                 status=status,
+                tunnels=backend.tunnel_statuses(),
             ))
         self.sidebar.ssh_browser.update_from_tabs(connections)
         self._update_ssh_tab_indicators()
@@ -1465,6 +1489,16 @@ class BifrostApp(QMainWindow):
             f"Reconnect requested for {len(targets)} SSH tab{'s' if len(targets) != 1 else ''}",
             4000,
         )
+
+    def _stop_ssh_tunnel(self, tab_index: int, tunnel_index: int):
+        if tab_index < 0 or tab_index >= self.tabs.count():
+            return
+        backend = self._ssh_backend_of(self.tabs.widget(tab_index))
+        if backend is None:
+            return
+        if backend.stop_tunnel(tunnel_index):
+            self._refresh_ssh_browser()
+            self.status_bar.showMessage("SSH tunnel stopped", 4000)
 
     def _attach_sftp_for_tab(self, tab_index: int):
         if tab_index < 0 or tab_index >= self.tabs.count():
