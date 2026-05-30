@@ -65,7 +65,7 @@ class BifrostApp(QMainWindow):
         self.setStyleSheet(get_dark_theme())
         self.detached_windows = []
         self.pinned_tabs = set()
-        self._setup_workspace_menu()
+        self._setup_app_menus()
         
         # Toolbar
         self.toolbar = MainToolBar(self)
@@ -214,19 +214,122 @@ class BifrostApp(QMainWindow):
             log.debug("local IP detection failed", exc_info=True)
             return "127.0.0.1"
 
-    def _setup_workspace_menu(self):
-        menu = self.menuBar().addMenu("Workspaces")
+    def _setup_app_menus(self):
+        menubar = self.menuBar()
+
+        session_menu = menubar.addMenu("Session")
+        new_session = QAction("New session...", self)
+        new_session.triggered.connect(self.open_session_dialog)
+        session_menu.addAction(new_session)
+        local_terminal = QAction("Start local terminal", self)
+        local_terminal.triggered.connect(lambda: self.new_terminal_tab("Local Shell"))
+        session_menu.addAction(local_terminal)
+        session_menu.addSeparator()
+        import_act = QAction("Import sessions...", self)
+        import_act.triggered.connect(self.import_sessions)
+        session_menu.addAction(import_act)
+        export_act = QAction("Export sessions...", self)
+        export_act.triggered.connect(self.export_sessions)
+        session_menu.addAction(export_act)
+        session_menu.addSeparator()
+        close_tab = QAction("Close current tab", self)
+        close_tab.triggered.connect(self.close_current_tab)
+        session_menu.addAction(close_tab)
+
+        connections_menu = menubar.addMenu("Connections")
+        reconnect_tab = QAction("Reconnect current tab", self)
+        reconnect_tab.triggered.connect(self.reconnect_current_tab)
+        connections_menu.addAction(reconnect_tab)
+        reconnect_all = QAction("Reconnect all disconnected", self)
+        reconnect_all.triggered.connect(self._reconnect_all_disconnected)
+        connections_menu.addAction(reconnect_all)
+        disconnect_tab = QAction("Disconnect current tab", self)
+        disconnect_tab.triggered.connect(self.disconnect_current_tab)
+        connections_menu.addAction(disconnect_tab)
+        connections_menu.addSeparator()
+        sftp_act = QAction("Open SFTP here", self)
+        sftp_act.triggered.connect(self.attach_sftp_for_current_tab)
+        connections_menu.addAction(sftp_act)
+        wol_act = QAction("Wake on LAN...", self)
+        wol_act.triggered.connect(self.on_wol_dialog)
+        connections_menu.addAction(wol_act)
+        forget_act = QAction("Forget credentials for current session", self)
+        forget_act.triggered.connect(self.forget_current_session_credentials)
+        connections_menu.addAction(forget_act)
+
+        view_menu = menubar.addMenu("View")
+        sidebar_act = QAction("Toggle sidebar", self)
+        sidebar_act.triggered.connect(lambda: self.sidebar.toggle_collapse())
+        view_menu.addAction(sidebar_act)
+        for label, index in (
+            ("Sessions", 0),
+            ("Credentials", 1),
+            ("Active SSH", 2),
+            ("Local servers", 3),
+            ("Tools", 4),
+            ("Macros", 5),
+            ("Snippets", 6),
+            ("Docker", 7),
+        ):
+            act = QAction(label, self)
+            act.triggered.connect(lambda _checked=False, i=index: self.sidebar.tabs.setCurrentIndex(i))
+            view_menu.addAction(act)
+        view_menu.addSeparator()
+        sftp_pane = QAction("Toggle SFTP pane", self)
+        sftp_pane.triggered.connect(self.toggle_sftp_pane)
+        view_menu.addAction(sftp_pane)
+        view_menu.addSeparator()
+        for label, key in (("Split vertical", "vert"), ("Split horizontal", "horiz"), ("Split quad", "quad")):
+            act = QAction(label, self)
+            act.triggered.connect(lambda _checked=False, k=key: self.on_split_requested(k))
+            view_menu.addAction(act)
+        multi = QAction("Toggle MultiExec", self)
+        multi.triggered.connect(lambda: self.toolbar.multi_act.toggle())
+        view_menu.addAction(multi)
+        fullscreen = QAction("Toggle full screen", self)
+        fullscreen.triggered.connect(self.toggle_full_screen)
+        view_menu.addAction(fullscreen)
+
+        tools_menu = menubar.addMenu("Tools")
+        for tool_name in ("Port Scanner", "Network Scanner", "IP Calculator", "SSH Key Gen"):
+            act = QAction(tool_name, self)
+            act.triggered.connect(lambda _checked=False, t=tool_name: self.on_tool_triggered(t))
+            tools_menu.addAction(act)
+        tools_menu.addSeparator()
+        diagnostics = QAction("Diagnostics...", self)
+        diagnostics.triggered.connect(self.show_diagnostics)
+        tools_menu.addAction(diagnostics)
+        settings = QAction("Settings...", self)
+        settings.triggered.connect(self.open_settings_dialog)
+        tools_menu.addAction(settings)
+
+        workspace_menu = menubar.addMenu("Workspaces")
         save_act = QAction("Save current SSH tabs...", self)
         save_act.triggered.connect(self.save_current_workspace)
-        menu.addAction(save_act)
+        workspace_menu.addAction(save_act)
 
         open_act = QAction("Open workspace...", self)
         open_act.triggered.connect(self.open_workspace_profile)
-        menu.addAction(open_act)
+        workspace_menu.addAction(open_act)
 
         delete_act = QAction("Delete workspace...", self)
         delete_act.triggered.connect(self.delete_workspace_profile)
-        menu.addAction(delete_act)
+        workspace_menu.addAction(delete_act)
+
+        help_menu = menubar.addMenu("Help")
+        about = QAction("About Bifrost", self)
+        about.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about)
+        copy_diag = QAction("Copy diagnostics", self)
+        copy_diag.triggered.connect(self.copy_diagnostics)
+        help_menu.addAction(copy_diag)
+        help_menu.addSeparator()
+        open_logs = QAction("Open logs folder", self)
+        open_logs.triggered.connect(self.open_logs_folder)
+        help_menu.addAction(open_logs)
+        open_config = QAction("Open config folder", self)
+        open_config.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(config_dir())))
+        help_menu.addAction(open_config)
 
     def broadcast_command(self):
         cmd = self.multi_exec_input.text() + "\r"
@@ -319,6 +422,19 @@ class BifrostApp(QMainWindow):
                 self.splitter.setSizes([260, 940])
             self._remember_layout_state()
 
+    def toggle_sftp_pane(self):
+        sizes = self.sidebar.content_splitter.sizes()
+        if len(sizes) == 2 and sizes[1] > 0:
+            self.sidebar.hide_sftp_pane()
+        else:
+            self.sidebar.show_sftp_pane()
+
+    def toggle_full_screen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+
     def _restore_layout_state(self):
         if self.settings.get("restore_window_geometry", True):
             main_sizes = self.settings.get("main_splitter_sizes") or []
@@ -381,6 +497,18 @@ class BifrostApp(QMainWindow):
             self.status_bar.showMessage("Settings applied.")
 
     def show_diagnostics(self):
+        text = self.diagnostics_text()
+        box = QMessageBox(self)
+        box.setWindowTitle("Bifrost diagnostics")
+        box.setText(text)
+        copy_btn = box.addButton("Copy diagnostics", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is copy_btn:
+            QApplication.clipboard().setText(text)
+            self.status_bar.showMessage("Diagnostics copied", 4000)
+
+    def diagnostics_text(self) -> str:
         ssh_agent = "unavailable"
         ssh_add = shutil.which("ssh-add")
         if ssh_add:
@@ -415,16 +543,21 @@ class BifrostApp(QMainWindow):
             f"Git: {shutil.which('git') or 'not found'}",
             f"Open tabs: {self.tabs.count() if hasattr(self, 'tabs') else 0}",
         ]
-        text = "\n".join(lines)
-        box = QMessageBox(self)
-        box.setWindowTitle("Bifrost diagnostics")
-        box.setText(text)
-        copy_btn = box.addButton("Copy diagnostics", QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Ok)
-        box.exec()
-        if box.clickedButton() is copy_btn:
-            QApplication.clipboard().setText(text)
-            self.status_bar.showMessage("Diagnostics copied", 4000)
+        return "\n".join(lines)
+
+    def copy_diagnostics(self):
+        QApplication.clipboard().setText(self.diagnostics_text())
+        self.status_bar.showMessage("Diagnostics copied", 4000)
+
+    def show_about_dialog(self):
+        QMessageBox.information(
+            self,
+            "About Bifrost",
+            "Bifrost Connection Manager\n\nA desktop toolkit for SSH, SFTP, local tools, snippets, and workspaces.",
+        )
+
+    def open_logs_folder(self):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(_log_path())))
 
     def import_mobaxterm_sessions(self):
         parent = QApplication.activeModalWidget() or self
@@ -1296,6 +1429,33 @@ class BifrostApp(QMainWindow):
                 return
         widget.deleteLater()
         self.tabs.removeTab(index)
+
+    def close_current_tab(self):
+        index = self.tabs.currentIndex()
+        if index >= 0:
+            self.close_tab(index)
+
+    def disconnect_current_tab(self):
+        index = self.tabs.currentIndex()
+        if index >= 0:
+            self._disconnect_tab(index)
+
+    def reconnect_current_tab(self):
+        index = self.tabs.currentIndex()
+        if index >= 0:
+            self._reconnect_tab(index)
+
+    def attach_sftp_for_current_tab(self):
+        index = self.tabs.currentIndex()
+        if index >= 0:
+            self._attach_sftp_for_tab(index)
+
+    def forget_current_session_credentials(self):
+        current = self.tabs.currentWidget()
+        if not isinstance(current, TerminalContainer) or not current.ssh_session:
+            self.status_bar.showMessage("Current tab has no saved SSH session", 4000)
+            return
+        self.on_forget_credentials(current.ssh_session)
 
     def _tab_is_live(self, widget) -> bool:
         """A tab is 'live' if it contains at least one terminal whose backend is still running."""

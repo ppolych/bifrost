@@ -31,21 +31,21 @@ class MainToolBar(QToolBar):
     def __init__(self, parent=None):
         super().__init__("Main Toolbar", parent)
         self.setIconSize(QSize(16, 16))
-        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.setup_actions()
 
     def setup_actions(self):
-        self.session_act = QAction(named_icon("add.svg"), "Session", self)
+        self.session_act = QAction(named_icon("add.svg"), "", self)
         self.session_act.setToolTip("Create a new session")
         self.addAction(self.session_act)
 
-        self.servers_act = QAction(named_icon("hub.svg"), "Servers", self)
+        self.servers_act = QAction(named_icon("hub.svg"), "", self)
         self.servers_act.setToolTip("Show local servers")
         self.addAction(self.servers_act)
 
         self.addSeparator()
 
-        self.multi_act = QAction(named_icon("bolt.svg"), "MultiExec", self)
+        self.multi_act = QAction(named_icon("bolt.svg"), "", self)
         self.multi_act.setToolTip("Broadcast input to all terminal tabs")
         self.multi_act.setCheckable(True)
         self.multi_act.toggled.connect(self.multi_exec_toggled.emit)
@@ -53,17 +53,17 @@ class MainToolBar(QToolBar):
 
         self.addSeparator()
 
-        self.split_vert = QAction(named_icon("terminal.svg"), "Split V", self)
+        self.split_vert = QAction(named_icon("terminal.svg"), "", self)
         self.split_vert.setToolTip("Split the current terminal vertically")
         self.split_vert.triggered.connect(lambda: self.split_triggered.emit("vert"))
         self.addAction(self.split_vert)
 
-        self.split_horiz = QAction(named_icon("terminal.svg"), "Split H", self)
+        self.split_horiz = QAction(named_icon("terminal.svg"), "", self)
         self.split_horiz.setToolTip("Split the current terminal horizontally")
         self.split_horiz.triggered.connect(lambda: self.split_triggered.emit("horiz"))
         self.addAction(self.split_horiz)
 
-        self.split_quad = QAction(named_icon("terminal.svg"), "Quad", self)
+        self.split_quad = QAction(named_icon("terminal.svg"), "", self)
         self.split_quad.setToolTip("Split the current terminal into four panes")
         self.split_quad.triggered.connect(lambda: self.split_triggered.emit("quad"))
         self.addAction(self.split_quad)
@@ -101,18 +101,19 @@ class MainToolBar(QToolBar):
         self.addWidget(qc_widget)
 
         # Wake-on-LAN toolbar button — opens a small ad-hoc dialog.
-        self.wol_act = QAction(named_icon("power_settings_new.svg"), "WoL", self)
+        self.wol_act = QAction(named_icon("power_settings_new.svg"), "", self)
         self.wol_act.setToolTip("Send a Wake-on-LAN magic packet")
         self.addAction(self.wol_act)
 
         self.addSeparator()
 
-        self.diagnostics_act = QAction(named_icon("build.svg"), "Diagnostics", self)
+        self.diagnostics_act = QAction(named_icon("build.svg"), "", self)
         self.diagnostics_act.setToolTip("Show runtime diagnostics")
         self.diagnostics_act.triggered.connect(self.diagnostics_requested.emit)
         self.addAction(self.diagnostics_act)
 
-        self.settings_act = QAction(named_icon("settings.svg"), "Settings", self)
+        self.settings_act = QAction(named_icon("settings.svg"), "", self)
+        self.settings_act.setToolTip("Open settings")
         self.addAction(self.settings_act)
 
     def _update_placeholder(self):
