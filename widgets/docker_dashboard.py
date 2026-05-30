@@ -8,7 +8,7 @@ from core.icons import named_icon
 from core import docker_utils
 
 class DockerDashboard(QWidget):
-    container_shell_requested = pyqtSignal(str, list) # name, command
+    container_shell_requested = pyqtSignal(str, object) # name, command list or SSH session dict
 
     def __init__(self):
         super().__init__()

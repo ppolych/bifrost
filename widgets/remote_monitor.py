@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from core.remote_monitor import (
     REMOTE_MONITOR_COMMAND,
+    format_bytes,
     format_rate,
     format_remote_monitor_details,
     parse_remote_monitor_output,
@@ -98,16 +99,67 @@ class RemoteMonitorWidget(QWidget):
             status=status,
         )
         self.setToolTip(tooltip)
-        for label in (
-            self.host_label,
-            self.cpu_label,
-            self.mem_label,
-            self.up_label,
-            self.down_label,
-            self.uptime_label,
-            self.disk_label,
-        ):
-            label.setToolTip(tooltip)
+        self.host_label.setToolTip(tooltip)
+        if status or not self._last_metrics or self._last_metrics.get("error"):
+            for label in (
+                self.cpu_label,
+                self.mem_label,
+                self.up_label,
+                self.down_label,
+                self.uptime_label,
+                self.disk_label,
+            ):
+                label.setToolTip(tooltip)
+            return
+
+        metrics = self._last_metrics
+        self.cpu_label.setToolTip(
+            "\n".join(
+                [
+                    "CPU",
+                    f"Usage: {metrics.get('cpu') or '--'}",
+                    f"Host: {metrics.get('host') or 'Remote'}",
+                ]
+            )
+        )
+        self.mem_label.setToolTip(
+            "\n".join(
+                [
+                    "Memory",
+                    f"Used / total: {metrics.get('mem') or '--'}",
+                    f"Host: {metrics.get('host') or 'Remote'}",
+                ]
+            )
+        )
+        self.up_label.setToolTip(
+            "\n".join(
+                [
+                    "Network upload",
+                    f"Current rate: {format_rate(self._last_up_rate or 0)}",
+                    f"Total sent: {self._format_net_total(1)}",
+                ]
+            )
+        )
+        self.down_label.setToolTip(
+            "\n".join(
+                [
+                    "Network download",
+                    f"Current rate: {format_rate(self._last_down_rate or 0)}",
+                    f"Total received: {self._format_net_total(0)}",
+                ]
+            )
+        )
+        uptime = str(metrics.get("uptime") or "--").replace("up ", "")
+        self.uptime_label.setToolTip("\n".join(["Uptime", f"Remote uptime: {uptime}"]))
+        disks = metrics.get("disk") or []
+        disk_lines = ["Disk usage", *(str(disk) for disk in disks)] if disks else ["Disk usage", "--"]
+        self.disk_label.setToolTip("\n".join(disk_lines))
+
+    def _format_net_total(self, index: int) -> str:
+        net = self._last_metrics.get("net") if self._last_metrics else None
+        if not isinstance(net, tuple) or len(net) <= index:
+            return "--"
+        return format_bytes(net[index])
 
     def _poll(self) -> None:
         backend = self._backend

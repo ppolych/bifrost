@@ -48,6 +48,18 @@ def format_rate(bytes_per_second: float) -> str:
     return f"{value:.2f} GB/s"
 
 
+def format_bytes(byte_count: int | float) -> str:
+    units = ("B", "KB", "MB", "GB", "TB")
+    value = float(byte_count)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{value:.0f} {unit}"
+            return f"{value:.2f} {unit}"
+        value /= 1024
+    return f"{value:.2f} TB"
+
+
 def format_remote_monitor_details(
     metrics: dict | None,
     *,

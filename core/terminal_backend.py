@@ -74,6 +74,8 @@ class TerminalBackend:
         if not IS_WINDOWS:
             os.write(self.fd, data)
         else:
+            if self._winpty is None:
+                return
             if isinstance(data, bytes):
                 data = data.decode("utf-8", errors="replace")
             self._winpty.write(data)

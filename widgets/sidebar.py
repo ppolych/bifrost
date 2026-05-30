@@ -51,7 +51,7 @@ class Sidebar(QWidget):
     edit_session_section_requested = pyqtSignal(list, dict, str)
     macro_triggered = pyqtSignal(str)
     snippet_triggered = pyqtSignal(str, bool)
-    container_shell_requested = pyqtSignal(str, list)
+    container_shell_requested = pyqtSignal(str, object)
     collapse_requested = pyqtSignal(bool)
     
     def __init__(self, session_manager, macro_engine, snippet_manager):

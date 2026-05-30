@@ -1,4 +1,9 @@
-from core.remote_monitor import format_rate, format_remote_monitor_details, parse_remote_monitor_output
+from core.remote_monitor import (
+    format_bytes,
+    format_rate,
+    format_remote_monitor_details,
+    parse_remote_monitor_output,
+)
 
 
 def test_parse_remote_monitor_output():
@@ -27,6 +32,12 @@ def test_format_rate():
     assert format_rate(0) == "0 B/s"
     assert format_rate(1024) == "1.00 KB/s"
     assert format_rate(1024 * 1024) == "1.00 MB/s"
+
+
+def test_format_bytes():
+    assert format_bytes(0) == "0 B"
+    assert format_bytes(1024) == "1.00 KB"
+    assert format_bytes(1024 * 1024) == "1.00 MB"
 
 
 def test_format_remote_monitor_details():

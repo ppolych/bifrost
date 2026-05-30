@@ -69,3 +69,29 @@ def test_remote_container_action_uses_backend_exec():
     assert ok is True
     assert error == ""
     assert backend.command == "docker restart web"
+
+
+def test_docker_shell_signal_preserves_remote_session_dict(qapp):
+    from widgets.docker_dashboard import DockerDashboard
+
+    class Creds:
+        host = "remote.example"
+
+    class Backend:
+        status = "connected"
+        creds = Creds()
+
+        def exec_command_text(self, command, timeout=10):
+            return 0, "abc|web|nginx|Up\n", ""
+
+    widget = DockerDashboard()
+    widget.set_ssh_context(Backend(), {"host": "remote.example", "user": "root", "type": "SSH"})
+    received = []
+    widget.container_shell_requested.connect(lambda name, payload: received.append((name, payload)))
+
+    widget._open_shell("web")
+
+    assert received[0][0] == "Docker: web"
+    assert isinstance(received[0][1], dict)
+    assert received[0][1]["host"] == "remote.example"
+    assert received[0][1]["command"].startswith("docker exec -it web")

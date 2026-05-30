@@ -173,6 +173,7 @@ class TerminalWidget(QAbstractScrollArea):
         except Exception:
             log.exception("Failed to start terminal backend")
             self._append_error_text("[failed to start backend — see bifrost.log]\r\n")
+            self.backend = None
             self.reader = None
             return
 
@@ -270,7 +271,7 @@ class TerminalWidget(QAbstractScrollArea):
             return
         try:
             self.backend.write(text.encode() if isinstance(text, str) else text)
-        except OSError:
+        except Exception:
             log.exception("backend write failed")
 
     # ----- keyboard -----
