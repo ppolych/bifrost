@@ -6,7 +6,12 @@ import time
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from core.remote_monitor import REMOTE_MONITOR_COMMAND, format_rate, parse_remote_monitor_output
+from core.remote_monitor import (
+    REMOTE_MONITOR_COMMAND,
+    format_rate,
+    format_remote_monitor_details,
+    parse_remote_monitor_output,
+)
 
 
 class RemoteMonitorWidget(QWidget):
@@ -17,6 +22,9 @@ class RemoteMonitorWidget(QWidget):
         self._backend = None
         self._polling = False
         self._last_net: tuple[int, int, float] | None = None
+        self._last_metrics: dict[str, object] | None = None
+        self._last_down_rate: float | None = None
+        self._last_up_rate: float | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
@@ -45,6 +53,7 @@ class RemoteMonitorWidget(QWidget):
         self._timer.setInterval(5000)
         self._timer.timeout.connect(self._poll)
         self.metrics_ready.connect(self._apply_metrics)
+        self._set_tooltip(status="idle")
 
     def set_backend(self, backend) -> None:
         if backend is self._backend:
@@ -56,6 +65,7 @@ class RemoteMonitorWidget(QWidget):
             self._set_idle()
             return
         self.host_label.setText("Remote: connecting")
+        self._set_tooltip(status="connecting")
         self._timer.start()
         self._poll()
 
@@ -68,6 +78,9 @@ class RemoteMonitorWidget(QWidget):
         return label
 
     def _set_idle(self) -> None:
+        self._last_metrics = None
+        self._last_down_rate = None
+        self._last_up_rate = None
         self.host_label.setText("Remote: idle")
         self.cpu_label.setText("CPU: --")
         self.mem_label.setText("RAM: --")
@@ -75,6 +88,26 @@ class RemoteMonitorWidget(QWidget):
         self.down_label.setText("DN: --")
         self.uptime_label.setText("Uptime: --")
         self.disk_label.setText("Disk: --")
+        self._set_tooltip(status="idle")
+
+    def _set_tooltip(self, status: str | None = None) -> None:
+        tooltip = format_remote_monitor_details(
+            self._last_metrics,
+            down_rate=self._last_down_rate,
+            up_rate=self._last_up_rate,
+            status=status,
+        )
+        self.setToolTip(tooltip)
+        for label in (
+            self.host_label,
+            self.cpu_label,
+            self.mem_label,
+            self.up_label,
+            self.down_label,
+            self.uptime_label,
+            self.disk_label,
+        ):
+            label.setToolTip(tooltip)
 
     def _poll(self) -> None:
         backend = self._backend
@@ -84,6 +117,7 @@ class RemoteMonitorWidget(QWidget):
             return
         if backend.connect_error is not None or backend.client is None:
             self.host_label.setText("Remote: unavailable")
+            self._set_tooltip(status="unavailable")
             return
         self._polling = True
         threading.Thread(target=self._poll_worker, args=(backend,), daemon=True).start()
@@ -107,9 +141,12 @@ class RemoteMonitorWidget(QWidget):
         if backend is not self._backend:
             return
         if metrics.get("error"):
+            self._last_metrics = metrics
             self.host_label.setText("Remote: monitor error")
+            self._set_tooltip()
             return
 
+        self._last_metrics = metrics
         self.host_label.setText(str(metrics.get("host") or "Remote"))
         self.cpu_label.setText(f"CPU: {metrics.get('cpu', '--')}")
         self.mem_label.setText(f"RAM: {metrics.get('mem', '--')}")
@@ -130,5 +167,8 @@ class RemoteMonitorWidget(QWidget):
                 down_rate = max(rx - last_rx, 0) / elapsed
                 up_rate = max(tx - last_tx, 0) / elapsed
             self._last_net = (rx, tx, now)
+            self._last_down_rate = down_rate
+            self._last_up_rate = up_rate
             self.down_label.setText(f"DN: {format_rate(down_rate)}")
             self.up_label.setText(f"UP: {format_rate(up_rate)}")
+        self._set_tooltip()

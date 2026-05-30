@@ -119,9 +119,7 @@ class BifrostApp(QMainWindow):
         self.sidebar.tool_triggered.connect(self.on_tool_triggered)
         self.sidebar.macro_triggered.connect(self.run_macro)
         self.sidebar.snippet_triggered.connect(self.run_snippet)
-        self.sidebar.container_shell_requested.connect(
-            lambda name, cmd: self.new_terminal_tab(name, command=cmd)
-        )
+        self.sidebar.container_shell_requested.connect(self.open_container_terminal)
         self.sidebar.record_btn.clicked.connect(self.toggle_macro_recording)
         self.sidebar.collapse_requested.connect(self.on_sidebar_collapsed)
         
@@ -317,19 +315,19 @@ class BifrostApp(QMainWindow):
         workspace_menu.addAction(delete_act)
 
         help_menu = menubar.addMenu("Help")
-        about = QAction("About Bifrost", self)
-        about.triggered.connect(self.show_about_dialog)
-        help_menu.addAction(about)
         copy_diag = QAction("Copy diagnostics", self)
         copy_diag.triggered.connect(self.copy_diagnostics)
         help_menu.addAction(copy_diag)
-        help_menu.addSeparator()
         open_logs = QAction("Open logs folder", self)
         open_logs.triggered.connect(self.open_logs_folder)
         help_menu.addAction(open_logs)
         open_config = QAction("Open config folder", self)
         open_config.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(config_dir())))
         help_menu.addAction(open_config)
+        help_menu.addSeparator()
+        about = QAction("About Bifrost", self)
+        about.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about)
 
     def broadcast_command(self):
         cmd = self.multi_exec_input.text() + "\r"
@@ -553,7 +551,10 @@ class BifrostApp(QMainWindow):
         QMessageBox.information(
             self,
             "About Bifrost",
-            "Bifrost Connection Manager\n\nA desktop toolkit for SSH, SFTP, local tools, snippets, and workspaces.",
+            "Bifrost Connection Manager\n\n"
+            "A desktop toolkit for SSH, SFTP, local tools, snippets, and workspaces.\n\n"
+            "Author: Panagiotis Polychronis\n"
+            "Email: panospolychronis@gmail.com",
         )
 
     def open_logs_folder(self):
@@ -665,6 +666,12 @@ class BifrostApp(QMainWindow):
             return text.format(**values)
         except (KeyError, ValueError):
             return text
+
+    def open_container_terminal(self, name, command_or_session):
+        if isinstance(command_or_session, dict):
+            self.new_terminal_tab(name, ssh_session=command_or_session)
+        else:
+            self.new_terminal_tab(name, command=command_or_session)
 
     def toggle_macro_recording(self):
         if not self.macro_engine.recording:
@@ -1517,11 +1524,16 @@ class BifrostApp(QMainWindow):
         self._refresh_ssh_browser()
         if index < 0:
             self.remote_monitor.set_backend(None)
+            if hasattr(self.sidebar, "docker_widget"):
+                self.sidebar.docker_widget.set_ssh_context(None)
             return
         name = self.tabs.tabText(index)
         widget = self.tabs.widget(index)
         ssh_backend = self._ssh_backend_of(widget)
         self.remote_monitor.set_backend(ssh_backend)
+        docker_session = widget.ssh_session if isinstance(widget, TerminalContainer) else None
+        if hasattr(self.sidebar, "docker_widget"):
+            self.sidebar.docker_widget.set_ssh_context(ssh_backend, docker_session)
 
         if ssh_backend is not None:
             # MobaXterm-style: SFTP pane is always visible alongside the
@@ -1563,7 +1575,6 @@ class BifrostApp(QMainWindow):
     def _update_ssh_tab_indicators(self):
         status_prefix = {
             "connecting": "[...] ",
-            "connected": "[OK] ",
             "disconnected": "[down] ",
             "closed": "[closed] ",
             "failed": "[failed] ",
@@ -1704,6 +1715,12 @@ class BifrostApp(QMainWindow):
                 )
                 return
             if backend.client is not None:
+                self.sidebar.docker_widget.set_ssh_context(
+                    backend,
+                    self.tabs.currentWidget().ssh_session
+                    if isinstance(self.tabs.currentWidget(), TerminalContainer)
+                    else None,
+                )
                 self.sidebar.sftp_widget.attach(backend.client)
             return
 
@@ -1721,6 +1738,12 @@ class BifrostApp(QMainWindow):
                     )
                     return
                 if backend.client is not None:
+                    self.sidebar.docker_widget.set_ssh_context(
+                        backend,
+                        self.tabs.currentWidget().ssh_session
+                        if isinstance(self.tabs.currentWidget(), TerminalContainer)
+                        else None,
+                    )
                     self.sidebar.sftp_widget.attach(backend.client)
                 return
             QTimer.singleShot(250, poll)

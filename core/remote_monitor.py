@@ -46,3 +46,36 @@ def format_rate(bytes_per_second: float) -> str:
             return f"{value:.2f} {unit}"
         value /= 1024
     return f"{value:.2f} GB/s"
+
+
+def format_remote_monitor_details(
+    metrics: dict | None,
+    *,
+    down_rate: float | None = None,
+    up_rate: float | None = None,
+    status: str | None = None,
+) -> str:
+    if status:
+        return f"Remote monitor\nStatus: {status}"
+    if not metrics:
+        return "Remote monitor\nStatus: idle"
+    if metrics.get("error"):
+        return f"Remote monitor\nStatus: error\nDetails: {metrics.get('error')}"
+
+    lines = ["Remote monitor"]
+    lines.append(f"Host: {metrics.get('host') or 'Remote'}")
+    lines.append(f"CPU: {metrics.get('cpu') or '--'}")
+    lines.append(f"Memory: {metrics.get('mem') or '--'}")
+    if down_rate is not None or up_rate is not None:
+        lines.append(f"Network down: {format_rate(down_rate or 0)}")
+        lines.append(f"Network up: {format_rate(up_rate or 0)}")
+    uptime = str(metrics.get("uptime") or "--").replace("up ", "")
+    lines.append(f"Uptime: {uptime}")
+
+    disks = metrics.get("disk") or []
+    if disks:
+        lines.append("Disks:")
+        lines.extend(f"  {disk}" for disk in disks)
+    else:
+        lines.append("Disks: --")
+    return "\n".join(lines)

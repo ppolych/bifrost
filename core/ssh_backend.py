@@ -526,6 +526,20 @@ class ParamikoBackend:
         except (OSError, paramiko.SSHException):
             log.debug("resize_pty failed", exc_info=True)
 
+    def exec_command_text(self, command: str, timeout: float = 10.0) -> tuple[int, str, str]:
+        """Run a non-interactive remote command and return exit code/stdout/stderr."""
+        if self.client is None or self.status != "connected":
+            raise paramiko.SSHException("SSH session is not connected")
+        stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+        try:
+            stdin.close()
+        except Exception:
+            pass
+        exit_code = stdout.channel.recv_exit_status()
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        return exit_code, out, err
+
     def close(self) -> None:
         if self._closed:
             return

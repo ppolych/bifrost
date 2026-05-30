@@ -1,4 +1,4 @@
-from core.remote_monitor import format_rate, parse_remote_monitor_output
+from core.remote_monitor import format_rate, format_remote_monitor_details, parse_remote_monitor_output
 
 
 def test_parse_remote_monitor_output():
@@ -27,3 +27,23 @@ def test_format_rate():
     assert format_rate(0) == "0 B/s"
     assert format_rate(1024) == "1.00 KB/s"
     assert format_rate(1024 * 1024) == "1.00 MB/s"
+
+
+def test_format_remote_monitor_details():
+    details = format_remote_monitor_details(
+        {
+            "host": "prod",
+            "cpu": "12%",
+            "mem": "0.91/7.56 GB",
+            "uptime": "up 36 hours",
+            "disk": ["/:89%", "/tmp:2%"],
+        },
+        down_rate=2048,
+        up_rate=1024,
+    )
+
+    assert "Host: prod" in details
+    assert "Network down: 2.00 KB/s" in details
+    assert "Network up: 1.00 KB/s" in details
+    assert "Uptime: 36 hours" in details
+    assert "  /:89%" in details
