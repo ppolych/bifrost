@@ -404,6 +404,7 @@ class SftpBrowser(QWidget):
         self._refresh()
 
     def detach(self) -> None:
+        self._stop_transfer(wait=True)
         if self.sftp is not None:
             try:
                 self.sftp.close()
@@ -865,6 +866,21 @@ class SftpBrowser(QWidget):
             self._transfer.cancel()
             self.cancel_btn.setEnabled(False)
 
+    def _stop_transfer(self, wait: bool = False) -> None:
+        transfer = self._transfer
+        if transfer is None:
+            return
+        transfer.cancel()
+        if wait and transfer.isRunning():
+            if self.sftp is not None:
+                try:
+                    self.sftp.close()
+                except Exception:
+                    log.debug("sftp close during transfer stop failed", exc_info=True)
+            transfer.wait(2000)
+        self._transfer = None
+        self.cancel_btn.setEnabled(False)
+
     def _on_transfer_progress(self, done: int, total: int) -> None:
         self._update_transfer_progress(done, total)
 
@@ -931,6 +947,10 @@ class SftpBrowser(QWidget):
             local, remote = self._upload_queue.pop(0)
             self._remove_queued_transfer(local, remote)
             self._start_transfer("upload", local, remote)
+
+    def closeEvent(self, event) -> None:
+        self._stop_transfer(wait=True)
+        super().closeEvent(event)
 
     def _add_queued_transfer(self, mode: str, local: str, remote: str) -> None:
         item = QTreeWidgetItem(self.transfer_queue, [

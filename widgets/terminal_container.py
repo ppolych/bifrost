@@ -82,3 +82,11 @@ class TerminalContainer(QWidget):
                 self.search_bar.set_status("No matches")
         else:
             self.search_bar.set_status("")
+
+    def shutdown(self) -> None:
+        for term in self.findChildren(TerminalWidget):
+            term.shutdown()
+
+    def closeEvent(self, event):
+        self.shutdown()
+        super().closeEvent(event)

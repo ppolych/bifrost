@@ -274,6 +274,21 @@ class TerminalWidget(QAbstractScrollArea):
         except Exception:
             log.exception("backend write failed")
 
+    def shutdown(self) -> None:
+        reader = getattr(self, "reader", None)
+        if reader is not None:
+            try:
+                reader.stop()
+            except Exception:
+                log.exception("reader stop failed")
+            self.reader = None
+        backend = getattr(self, "backend", None)
+        if backend is not None:
+            try:
+                backend.close()
+            except Exception:
+                log.exception("backend close failed")
+
     # ----- keyboard -----
 
     _SPECIAL_KEYS = {
@@ -821,11 +836,7 @@ class TerminalWidget(QAbstractScrollArea):
     # ----- shutdown -----
 
     def closeEvent(self, event):
-        if getattr(self, "reader", None) is not None:
-            try:
-                self.reader.stop()
-            except Exception:
-                log.exception("reader stop failed")
+        self.shutdown()
         if self.log_file is not None:
             try:
                 self.log_file.close()

@@ -1434,6 +1434,8 @@ class BifrostApp(QMainWindow):
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
+        if hasattr(widget, "shutdown"):
+            widget.shutdown()
         widget.deleteLater()
         self.tabs.removeTab(index)
 
@@ -1512,7 +1514,10 @@ class BifrostApp(QMainWindow):
                     event.ignore()
                     return
         for i in range(self.tabs.count()):
-            backend = self._ssh_backend_of(self.tabs.widget(i))
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "shutdown"):
+                tab.shutdown()
+            backend = self._ssh_backend_of(tab)
             if backend is not None:
                 backend.close()
         if hasattr(self, "sidebar"):
@@ -1647,6 +1652,7 @@ class BifrostApp(QMainWindow):
             backend.close()
         old_text = self.tabs.tabText(tab_index)
         self.tabs.removeTab(tab_index)
+        widget.shutdown()
         widget.deleteLater()
         container = TerminalContainer(
             session.get("name") or widget.name,
