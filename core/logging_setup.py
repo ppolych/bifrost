@@ -9,8 +9,22 @@ import logging.handlers
 import os
 
 from core.platform_utils import config_path
+from core.security import redact_text
 
 _configured = False
+
+
+class RedactingFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        original_msg = record.msg
+        original_args = record.args
+        try:
+            record.msg = redact_text(record.getMessage())
+            record.args = ()
+            return super().format(record)
+        finally:
+            record.msg = original_msg
+            record.args = original_args
 
 
 def configure_logging(level: int = logging.INFO) -> str:
@@ -22,7 +36,7 @@ def configure_logging(level: int = logging.INFO) -> str:
     log_path = _log_path()
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
-    formatter = logging.Formatter(
+    formatter = RedactingFormatter(
         "%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )

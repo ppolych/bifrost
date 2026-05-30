@@ -274,6 +274,41 @@ def test_backend_status_detects_host_key_failures():
     assert backend.status == "host-key failed"
 
 
+def test_tunnel_status_and_stop(monkeypatch):
+    from core.ssh_backend import LocalPortForwarder, ParamikoBackend, SshCredentials
+
+    started = []
+
+    def fake_start(self):
+        started.append(self.spec.label)
+
+        class Listener:
+            def close(self):
+                pass
+
+        self._listener = Listener()
+
+    monkeypatch.setattr(LocalPortForwarder, "start", fake_start)
+    backend = ParamikoBackend(SshCredentials(
+        host="h",
+        username="u",
+        tunnels=["L 127.0.0.1:15432 db:5432"],
+    ))
+
+    class FakeClient:
+        def get_transport(self):
+            return object()
+
+    backend._start_tunnels(FakeClient())
+
+    assert started == ["L 127.0.0.1:15432 db:5432"]
+    assert backend.tunnel_count == 1
+    assert backend.tunnel_statuses()[0]["active"] is True
+    assert backend.stop_tunnel(0) is True
+    assert backend.tunnel_statuses()[0]["active"] is False
+    assert backend.stop_tunnel(99) is False
+
+
 def test_sftp_format_size():
     from widgets.sftp_browser import _format_size
 

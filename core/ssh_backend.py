@@ -173,6 +173,10 @@ class LocalPortForwarder(_BaseForwarder):
             except OSError:
                 pass
 
+    @property
+    def active(self) -> bool:
+        return super().active and self._listener is not None
+
 
 class RemotePortForwarder(_BaseForwarder):
     def start(self) -> None:
@@ -211,6 +215,10 @@ class RemotePortForwarder(_BaseForwarder):
             self.transport.cancel_port_forward(self.spec.bind_host, self.spec.bind_port)
         except Exception:
             log.debug("cancel remote port forward failed", exc_info=True)
+
+    @property
+    def active(self) -> bool:
+        return super().active and self.transport.is_active()
 
 
 class DynamicSocksForwarder(LocalPortForwarder):
@@ -646,6 +654,10 @@ class ParamikoBackend:
                 log.info("started SSH tunnel %s", spec.label)
             except Exception as e:
                 raise paramiko.SSHException(f"Failed to start tunnel {raw!r}: {e}") from e
+
+    @property
+    def tunnel_count(self) -> int:
+        return len(self._forwarders)
 
     def tunnel_statuses(self) -> list[dict]:
         return [

@@ -160,6 +160,24 @@ def test_cleanup_transfer_chains_queue(browser, monkeypatch):
     assert browser._upload_queue == [("/b", "/r/b")]
 
 
+def test_failed_transfer_does_not_auto_start_next_queued(browser, monkeypatch):
+    browser.sftp = MagicMock()
+    started = []
+    monkeypatch.setattr(
+        browser,
+        "_start_transfer",
+        lambda mode, local, remote: started.append((mode, local, remote)),
+    )
+    browser._transfer = MagicMock()
+    browser._upload_queue = [("/a", "/r/a")]
+    browser._last_transfer_failed = True
+
+    browser._cleanup_transfer()
+
+    assert started == []
+    assert browser._upload_queue == [("/a", "/r/a")]
+
+
 def test_transfer_queue_records_queued_and_done(browser):
     browser._add_queued_transfer("upload", "/tmp/a.txt", "/remote/a.txt")
     assert browser.transfer_queue.topLevelItemCount() == 1

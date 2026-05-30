@@ -48,7 +48,8 @@ class DockerDashboard(QWidget):
         containers = docker_utils.list_containers()
         self.tree.clear()
         if not containers:
-            QTreeWidgetItem(self.tree, ["No containers found", ""])
+            item = QTreeWidgetItem(self.tree, ["No containers found", "Docker is not running or has no containers"])
+            item.setDisabled(True)
             return
             
         for c in containers:

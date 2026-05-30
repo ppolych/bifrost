@@ -1,7 +1,7 @@
 import copy
 import logging
 
-from core import session_crypto
+from core import security, session_crypto
 from core.platform_utils import atomic_write_json, config_path, load_json
 
 log = logging.getLogger(__name__)
@@ -60,10 +60,13 @@ class SessionManager:
             self.recent_sessions.pop()
 
     def export_sessions(self, export_path):
-        atomic_write_json(export_path, self.sessions)
+        atomic_write_json(export_path, security.sanitize_for_export(self.sessions))
 
     def export_sessions_encrypted(self, export_path, password: str):
-        atomic_write_json(export_path, session_crypto.encrypt_sessions(self.sessions, password))
+        atomic_write_json(
+            export_path,
+            session_crypto.encrypt_sessions(security.sanitize_for_export(self.sessions), password),
+        )
 
     def import_sessions(self, import_path):
         merged = load_json(import_path, None)

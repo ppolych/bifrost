@@ -241,3 +241,23 @@ def test_plain_import_refuses_encrypted_file(sm, tmp_path):
 
     with pytest.raises(ValueError):
         sm.import_sessions(str(path))
+
+
+def test_session_exports_drop_accidental_secret_fields(sm, tmp_path):
+    sm.add_session_at(["Group A"], {
+        "name": "secret-host",
+        "type": "SSH",
+        "host": "prod.example.com",
+        "password": "secret",
+        "passphrase": "secret",
+        "token": "secret",
+    })
+    path = tmp_path / "sessions.json"
+    sm.export_sessions(str(path))
+
+    exported = persistence.load_json(str(path), {})
+    session = next(s for s in exported["Group A"] if s["name"] == "secret-host")
+    assert session["host"] == "prod.example.com"
+    assert "password" not in session
+    assert "passphrase" not in session
+    assert "token" not in session

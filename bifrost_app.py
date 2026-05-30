@@ -413,8 +413,18 @@ class BifrostApp(QMainWindow):
             f"Keyring available: {'yes' if credentials.is_available() else 'no'}",
             f"SSH agent: {ssh_agent}",
             f"Git: {shutil.which('git') or 'not found'}",
+            f"Open tabs: {self.tabs.count() if hasattr(self, 'tabs') else 0}",
         ]
-        QMessageBox.information(self, "Bifrost diagnostics", "\n".join(lines))
+        text = "\n".join(lines)
+        box = QMessageBox(self)
+        box.setWindowTitle("Bifrost diagnostics")
+        box.setText(text)
+        copy_btn = box.addButton("Copy diagnostics", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is copy_btn:
+            QApplication.clipboard().setText(text)
+            self.status_bar.showMessage("Diagnostics copied", 4000)
 
     def import_mobaxterm_sessions(self):
         parent = QApplication.activeModalWidget() or self
@@ -1334,6 +1344,12 @@ class BifrostApp(QMainWindow):
                 if reply != QMessageBox.StandardButton.Yes:
                     event.ignore()
                     return
+        for i in range(self.tabs.count()):
+            backend = self._ssh_backend_of(self.tabs.widget(i))
+            if backend is not None:
+                backend.close()
+        if hasattr(self, "sidebar"):
+            self.sidebar.sftp_widget.detach()
         super().closeEvent(event)
 
     def on_tab_changed(self, index):
@@ -1521,6 +1537,12 @@ class BifrostApp(QMainWindow):
         """Poll until the SSH connection is ready, then attach the SFTP browser."""
         if backend.wait_ready(timeout=0):
             self._refresh_ssh_browser()
+            if backend.connect_error is not None:
+                self.status_bar.showMessage(
+                    f"SFTP unavailable: SSH connection failed ({backend.connect_error})",
+                    6000,
+                )
+                return
             if backend.client is not None:
                 self.sidebar.sftp_widget.attach(backend.client)
             return
@@ -1532,6 +1554,12 @@ class BifrostApp(QMainWindow):
                 return  # user switched tabs; stop polling
             if backend.wait_ready(timeout=0):
                 self._refresh_ssh_browser()
+                if backend.connect_error is not None:
+                    self.status_bar.showMessage(
+                        f"SFTP unavailable: SSH connection failed ({backend.connect_error})",
+                        6000,
+                    )
+                    return
                 if backend.client is not None:
                     self.sidebar.sftp_widget.attach(backend.client)
                 return

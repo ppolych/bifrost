@@ -370,6 +370,7 @@ class SftpBrowser(QWidget):
         self._transfer_mode: Optional[str] = None
         self._transfer_name: str = ""
         self._active_transfer_row: QTreeWidgetItem | None = None
+        self._last_transfer_failed = False
 
         self.transfer_queue = QTreeWidget()
         self.transfer_queue.setHeaderLabels(["Status", "Operation", "Item"])
@@ -841,6 +842,11 @@ class SftpBrowser(QWidget):
         self._start_transfer("download", local, remote)
 
     def _start_transfer(self, mode: str, local: str, remote: str) -> None:
+        if self.sftp is None:
+            return
+        if not local or not remote:
+            return
+        self._last_transfer_failed = False
         self._begin_transfer_progress(mode, local, remote)
         self._set_buttons_enabled(False)
         self._mark_transfer_active(mode, local, remote)
@@ -907,6 +913,7 @@ class SftpBrowser(QWidget):
         self._refresh()
 
     def _on_transfer_failed(self, message: str) -> None:
+        self._last_transfer_failed = True
         self.transfer_status.setText(f"Transfer failed: {message}")
         self.transfer_panel.show()
         self._mark_transfer_finished("Failed")
@@ -916,6 +923,9 @@ class SftpBrowser(QWidget):
         self._set_buttons_enabled(True)
         self._transfer = None
         self._reset_transfer_progress()
+        if self._last_transfer_failed:
+            self._last_transfer_failed = False
+            return
         # Chain into the next queued upload (drag-and-drop with multiple files).
         if self._upload_queue and self.sftp is not None:
             local, remote = self._upload_queue.pop(0)
@@ -994,7 +1004,11 @@ class SftpBrowser(QWidget):
     def _retry_transfer(self, meta: dict) -> None:
         if self.sftp is None or self._transfer is not None:
             return
-        self._start_transfer(meta.get("mode", "upload"), meta.get("local", ""), meta.get("remote", ""))
+        local = meta.get("local", "")
+        remote = meta.get("remote", "")
+        if not local or not remote:
+            return
+        self._start_transfer(meta.get("mode", "upload"), local, remote)
 
     # ----- drag-and-drop uploads -----
 
