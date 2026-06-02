@@ -33,7 +33,11 @@ def list_containers():
 
 def list_remote_containers(backend):
     command = f"docker ps -a --format {shlex.quote(DOCKER_PS_FORMAT)}"
-    code, out, err = backend.exec_command_text(command, timeout=8)
+    try:
+        code, out, err = backend.exec_command_text(command, timeout=8)
+    except Exception as e:
+        log.debug("remote docker ps failed", exc_info=True)
+        return [], str(e) or e.__class__.__name__
     if code != 0:
         return [], err.strip() or f"docker ps exited with {code}"
     return parse_containers(out), ""
@@ -44,7 +48,11 @@ def container_action(container_name, action, backend=None):
         raise ValueError(f"Unsupported docker action: {action}")
     if backend is not None:
         command = f"docker {action} {shlex.quote(container_name)}"
-        code, _out, err = backend.exec_command_text(command, timeout=20)
+        try:
+            code, _out, err = backend.exec_command_text(command, timeout=20)
+        except Exception as e:
+            log.debug("remote docker %s failed", action, exc_info=True)
+            return False, str(e) or e.__class__.__name__
         return code == 0, "" if code == 0 else (err.strip() or f"docker {action} exited with {code}")
     try:
         subprocess.run(
@@ -71,7 +79,11 @@ def logs_command(container_name):
 
 def remote_logs_text(backend, container_name, tail=200):
     command = f"docker logs --tail {int(tail)} {shlex.quote(container_name)}"
-    code, out, err = backend.exec_command_text(command, timeout=15)
+    try:
+        code, out, err = backend.exec_command_text(command, timeout=15)
+    except Exception as e:
+        log.debug("remote docker logs failed", exc_info=True)
+        return False, str(e) or e.__class__.__name__
     if code != 0:
         return False, err.strip() or f"docker logs exited with {code}"
     return True, out

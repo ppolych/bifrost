@@ -167,9 +167,9 @@ class _TransferThread(QThread):
                 else:
                     self.sftp.get(self.remote_path, self.local_path, callback=self._callback)
                     self.finished_ok.emit(f"Downloaded {posixpath.basename(self.remote_path)}")
-        except (OSError, paramiko.SSHException) as e:
+        except (EOFError, OSError, paramiko.SSHException) as e:
             log.exception("SFTP transfer failed")
-            self.failed.emit(str(e))
+            self.failed.emit(str(e) or e.__class__.__name__)
 
     def _callback(self, done: int, total: int):
         if self._cancelled:

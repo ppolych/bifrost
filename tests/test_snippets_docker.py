@@ -52,6 +52,21 @@ def test_remote_container_listing_uses_backend_exec():
     assert "docker ps -a" in backend.commands[0][0]
 
 
+def test_remote_container_listing_reports_disconnect():
+    import paramiko
+
+    from core.docker_utils import list_remote_containers
+
+    class Backend:
+        def exec_command_text(self, command, timeout=10):
+            raise paramiko.SSHException("SSH session is not connected")
+
+    containers, error = list_remote_containers(Backend())
+
+    assert containers == []
+    assert error == "SSH session is not connected"
+
+
 def test_remote_container_action_uses_backend_exec():
     from core.docker_utils import container_action
 
@@ -69,6 +84,19 @@ def test_remote_container_action_uses_backend_exec():
     assert ok is True
     assert error == ""
     assert backend.command == "docker restart web"
+
+
+def test_remote_container_action_reports_disconnect():
+    from core.docker_utils import container_action
+
+    class Backend:
+        def exec_command_text(self, command, timeout=10):
+            raise EOFError()
+
+    ok, error = container_action("web", "restart", backend=Backend())
+
+    assert ok is False
+    assert error == "EOFError"
 
 
 def test_docker_shell_signal_preserves_remote_session_dict(qapp):

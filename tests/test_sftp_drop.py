@@ -348,6 +348,25 @@ def test_transfer_thread_uploads_local_directory_recursively(qapp, tmp_path):
     ]
 
 
+def test_transfer_thread_reports_eof_error(qapp, tmp_path):
+    from widgets.sftp_browser import _TransferThread
+
+    local = tmp_path / "upload.txt"
+    local.write_text("data")
+
+    class FakeSftp:
+        def put(self, local_path, remote_path, callback=None):
+            raise EOFError()
+
+    failures = []
+    thread = _TransferThread(FakeSftp(), "upload", str(local), "/remote/upload.txt")
+    thread.failed.connect(failures.append)
+
+    thread.run()
+
+    assert failures == ["EOFError"]
+
+
 def test_download_remote_folder_uses_directory_picker(browser, monkeypatch):
     from PyQt6.QtWidgets import QFileDialog
 
