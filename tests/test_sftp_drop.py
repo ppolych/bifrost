@@ -239,6 +239,51 @@ def test_remote_path_for_item_tracks_tree_metadata(browser):
     assert browser._remote_path_for_item(browser._dir_item) == "/home/user/src"
 
 
+def test_sftp_tree_allows_extended_row_selection(browser):
+    from PyQt6.QtWidgets import QAbstractItemView
+
+    assert browser.tree.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
+    assert browser.tree.selectionBehavior() == QAbstractItemView.SelectionBehavior.SelectRows
+
+
+def test_selected_remote_items_returns_all_selected_rows(browser):
+    browser._dir_item.setSelected(True)
+    browser._file_item.setSelected(True)
+
+    assert browser._selected_remote_items() == [
+        ("/home/user/src", True),
+        ("/home/user/README", False),
+    ]
+
+
+def test_download_selected_items_starts_first_and_queues_rest(browser, monkeypatch):
+    from PyQt6.QtWidgets import QFileDialog
+
+    browser.sftp = MagicMock()
+    browser._transfer = None
+    browser._dir_item.setSelected(True)
+    browser._file_item.setSelected(True)
+    started = []
+    queued = []
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: "C:/Downloads")
+    monkeypatch.setattr(
+        browser,
+        "_start_transfer",
+        lambda mode, local, remote: started.append((mode, local, remote)),
+    )
+    monkeypatch.setattr(
+        browser,
+        "_add_queued_transfer",
+        lambda mode, local, remote: queued.append((mode, local, remote)),
+    )
+
+    browser._download()
+
+    assert started == [("download", os.path.join("C:/Downloads", "src"), "/home/user/src")]
+    assert browser._download_queue == [(os.path.join("C:/Downloads", "README"), "/home/user/README")]
+    assert queued == [("download", os.path.join("C:/Downloads", "README"), "/home/user/README")]
+
+
 def test_open_remote_folder_refreshes_listing(browser, monkeypatch):
     refreshed = []
     monkeypatch.setattr(browser, "_refresh", lambda: refreshed.append(True))

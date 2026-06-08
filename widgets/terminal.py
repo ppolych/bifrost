@@ -61,6 +61,7 @@ ANSI_COLORS = {
 
 DEFAULT_FG = "#d3d7cf"
 DEFAULT_BG = "#000000"
+DECCKM_PRIVATE_MODE = 1 << 5  # DEC application cursor keys, set by CSI ? 1 h.
 
 
 def _resolve_color(value: str, default: str, bold: bool = False) -> QColor:
@@ -301,10 +302,6 @@ class TerminalWidget(QAbstractScrollArea):
         # apps recognize.
         Qt.Key.Key_Backtab: b"\x1b[Z",
         Qt.Key.Key_Escape: b"\x1b",
-        Qt.Key.Key_Up: b"\x1b[A",
-        Qt.Key.Key_Down: b"\x1b[B",
-        Qt.Key.Key_Right: b"\x1b[C",
-        Qt.Key.Key_Left: b"\x1b[D",
         Qt.Key.Key_Home: b"\x1b[H",
         Qt.Key.Key_End: b"\x1b[F",
         Qt.Key.Key_PageUp: b"\x1b[5~",
@@ -323,6 +320,20 @@ class TerminalWidget(QAbstractScrollArea):
         Qt.Key.Key_F10: b"\x1b[21~",
         Qt.Key.Key_F11: b"\x1b[23~",
         Qt.Key.Key_F12: b"\x1b[24~",
+    }
+
+    _NORMAL_CURSOR_KEYS = {
+        Qt.Key.Key_Up: b"\x1b[A",
+        Qt.Key.Key_Down: b"\x1b[B",
+        Qt.Key.Key_Right: b"\x1b[C",
+        Qt.Key.Key_Left: b"\x1b[D",
+    }
+
+    _APPLICATION_CURSOR_KEYS = {
+        Qt.Key.Key_Up: b"\x1bOA",
+        Qt.Key.Key_Down: b"\x1bOB",
+        Qt.Key.Key_Right: b"\x1bOC",
+        Qt.Key.Key_Left: b"\x1bOD",
     }
 
     def focusNextPrevChild(self, _next):
@@ -351,6 +362,15 @@ class TerminalWidget(QAbstractScrollArea):
         if mods & Qt.KeyboardModifier.ControlModifier and Qt.Key.Key_A <= key <= Qt.Key.Key_Z:
             byte = bytes([key - Qt.Key.Key_A + 1])
             self._emit_and_send(byte)
+            return
+
+        cursor_keys = (
+            self._APPLICATION_CURSOR_KEYS
+            if DECCKM_PRIVATE_MODE in getattr(self.screen, "mode", set())
+            else self._NORMAL_CURSOR_KEYS
+        )
+        if key in cursor_keys:
+            self._emit_and_send(cursor_keys[key])
             return
 
         if key in self._SPECIAL_KEYS:

@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QAbstractItemView,
     QStyle,
     QToolBar,
     QTreeWidget,
@@ -273,6 +274,7 @@ class SftpBrowser(QWidget):
         self._transfer: Optional[_TransferThread] = None
         # Pending uploads chained behind the current transfer (drag-and-drop).
         self._upload_queue: list[tuple[str, str]] = []  # (local, remote)
+        self._download_queue: list[tuple[str, str]] = []  # (local, remote)
         # Hide dotfiles by default; flipped via set_show_hidden() from settings.
         self.show_hidden: bool = False
 
@@ -331,6 +333,8 @@ class SftpBrowser(QWidget):
         self.tree.setHeaderLabels(["Name", "Size", "Modified"])
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.tree.setIconSize(QSize(16, 16))
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tree.setStyleSheet(
             "QTreeWidget { background-color: #1e1e1e; color: #ccc; border: none; }"
         )
@@ -415,6 +419,7 @@ class SftpBrowser(QWidget):
         self.path_label.setText("Not connected")
         self._reset_transfer_progress()
         self._upload_queue.clear()
+        self._download_queue.clear()
         self.transfer_queue.clear()
         self.transfer_queue.hide()
         self._set_buttons_enabled(False)
@@ -513,6 +518,21 @@ class SftpBrowser(QWidget):
             return None
         return posixpath.join(self.cwd, meta["name"])
 
+    def _selected_remote_items(self) -> list[tuple[str, bool]]:
+        items = self.tree.selectedItems()
+        if not items and self.tree.currentItem() is not None:
+            items = [self.tree.currentItem()]
+        selected: list[tuple[str, bool]] = []
+        seen: set[str] = set()
+        for item in items:
+            remote = self._remote_path_for_item(item)
+            if not remote or remote in seen:
+                continue
+            meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+            selected.append((remote, bool(meta.get("is_dir"))))
+            seen.add(remote)
+        return selected
+
     def _remote_path_for_item(self, item: QTreeWidgetItem | None) -> Optional[str]:
         if item is None:
             return None
@@ -547,7 +567,7 @@ class SftpBrowser(QWidget):
             default_act.triggered.connect(lambda: self.file_system_open_requested.emit(remote))
         menu.addSeparator()
         download_act = menu.addAction(named_icon("download.svg"), "Download")
-        download_act.triggered.connect(lambda: self._download_remote(remote, is_dir))
+        download_act.triggered.connect(lambda: self._download_context_selection(item, remote, is_dir))
 
         menu.addSeparator()
         rename_act = menu.addAction(named_icon("edit.svg"), "Rename")
@@ -566,6 +586,19 @@ class SftpBrowser(QWidget):
         perms_act.triggered.connect(lambda: self._edit_permissions(remote, item))
 
         menu.exec(self.tree.mapToGlobal(pos))
+
+    def _download_context_selection(
+        self,
+        item: QTreeWidgetItem,
+        fallback_remote: str,
+        fallback_is_dir: bool,
+    ) -> None:
+        if item.isSelected():
+            selected = self._selected_remote_items()
+            if len(selected) > 1:
+                self._download_remote_items(selected)
+                return
+        self._download_remote(fallback_remote, fallback_is_dir)
 
     def _open_remote_folder(self, remote: str) -> None:
         self.cwd = posixpath.normpath(remote) or "/"
@@ -594,6 +627,26 @@ class SftpBrowser(QWidget):
             local, _ = QFileDialog.getSaveFileName(self, "Save as", posixpath.basename(remote))
             if local:
                 self._start_transfer("download", local, remote)
+
+    def _download_remote_items(self, items: list[tuple[str, bool]]) -> None:
+        if self.sftp is None or self._transfer is not None or not items:
+            return
+        if len(items) == 1:
+            remote, is_dir = items[0]
+            self._download_remote(remote, is_dir)
+            return
+        parent = QFileDialog.getExistingDirectory(self, "Download selected items to", "")
+        if not parent:
+            return
+        queue = [
+            (os.path.join(parent, posixpath.basename(remote)), remote)
+            for remote, _is_dir in items
+        ]
+        first_local, first_remote = queue[0]
+        self._download_queue.extend(queue[1:])
+        for local, remote in queue[1:]:
+            self._add_queued_transfer("download", local, remote)
+        self._start_transfer("download", first_local, first_remote)
 
     def _rename_remote(self, remote: str) -> None:
         if self.sftp is None:
@@ -702,14 +755,19 @@ class SftpBrowser(QWidget):
     def _upload(self) -> None:
         if self.sftp is None or self._transfer is not None:
             return
-        local, _ = QFileDialog.getOpenFileName(self, "Upload file", "")
-        if not local:
+        locals_, _ = QFileDialog.getOpenFileNames(self, "Upload files", "")
+        if not locals_:
             return
-        remote = posixpath.join(self.cwd, os.path.basename(local))
-        queue = self._resolve_upload_conflicts([(local, remote)])
+        queue = self._resolve_upload_conflicts([
+            (local, posixpath.join(self.cwd, os.path.basename(local)))
+            for local in locals_
+        ])
         if not queue:
             return
         self._start_transfer("upload", queue[0][0], queue[0][1])
+        self._upload_queue.extend(queue[1:])
+        for local, remote in queue[1:]:
+            self._add_queued_transfer("upload", local, remote)
 
     def _upload_folder(self) -> None:
         if self.sftp is None or self._transfer is not None:
@@ -831,16 +889,11 @@ class SftpBrowser(QWidget):
     def _download(self) -> None:
         if self.sftp is None or self._transfer is not None:
             return
-        remote = self._selected_remote_path()
-        if not remote:
-            QMessageBox.information(self, "SFTP", "Select a file (not a directory) to download.")
+        selected = self._selected_remote_items()
+        if not selected:
+            QMessageBox.information(self, "SFTP", "Select one or more remote items to download.")
             return
-        local, _ = QFileDialog.getSaveFileName(
-            self, "Save as", posixpath.basename(remote)
-        )
-        if not local:
-            return
-        self._start_transfer("download", local, remote)
+        self._download_remote_items(selected)
 
     def _start_transfer(self, mode: str, local: str, remote: str) -> None:
         if self.sftp is None:
@@ -941,6 +994,11 @@ class SftpBrowser(QWidget):
         self._reset_transfer_progress()
         if self._last_transfer_failed:
             self._last_transfer_failed = False
+            return
+        if self._download_queue and self.sftp is not None:
+            local, remote = self._download_queue.pop(0)
+            self._remove_queued_transfer(local, remote)
+            self._start_transfer("download", local, remote)
             return
         # Chain into the next queued upload (drag-and-drop with multiple files).
         if self._upload_queue and self.sftp is not None:
