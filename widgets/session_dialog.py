@@ -155,6 +155,21 @@ class SessionDialog(QDialog):
         self.telnet_layout.addRow("Port:", self.telnet_port_input)
         self.proto_tabs.addTab(self.telnet_tab, "Telnet")
 
+        # Serial sub-tab
+        self.serial_tab = QWidget()
+        self.serial_layout = QFormLayout(self.serial_tab)
+        self.serial_device_input = QLineEdit()
+        self.serial_device_input.setPlaceholderText("/dev/ttyUSB0 or COM3")
+        self.serial_baud_combo = QComboBox()
+        self.serial_baud_combo.addItems(["9600", "19200", "38400", "57600", "115200"])
+        self.serial_baud_combo.setCurrentText("115200")
+        self.serial_layout.addRow("Device:", self.serial_device_input)
+        self.serial_layout.addRow("Baud rate:", self.serial_baud_combo)
+        self.serial_note = QLabel("Requires pyserial (`pip install pyserial`).")
+        self.serial_note.setStyleSheet("color: #888; font-size: 10px;")
+        self.serial_layout.addRow(self.serial_note)
+        self.proto_tabs.addTab(self.serial_tab, "Serial")
+
         # RDP sub-tab (placeholder, backend not implemented)
         self.rdp_tab = QWidget()
         self.rdp_layout = QFormLayout(self.rdp_tab)
@@ -266,6 +281,7 @@ class SessionDialog(QDialog):
         tab = {
             "SSH": self.ssh_tab,
             "Telnet": self.telnet_tab,
+            "Serial": self.serial_tab,
             "RDP": self.rdp_tab,
             "WSL": self.wsl_tab,
         }.get(proto, self.ssh_tab)
@@ -293,6 +309,9 @@ class SessionDialog(QDialog):
         if proto == "Telnet":
             self.telnet_host_input.setText(session.get("host", "127.0.0.1"))
             self.telnet_port_input.setText(str(session.get("port", "23") or "23"))
+        if proto == "Serial":
+            self.serial_device_input.setText(session.get("device") or "")
+            self.serial_baud_combo.setCurrentText(str(session.get("baudrate", "115200") or "115200"))
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -330,6 +349,17 @@ class SessionDialog(QDialog):
                 "type": "Telnet",
                 "host": host,
                 "port": port,
+                "overrides": overrides,
+            }
+        if proto == "Serial":
+            device = self.serial_device_input.text().strip()
+            baud = self.serial_baud_combo.currentText()
+            name = self.name_input.text().strip() or f"{device or 'serial'} @{baud}"
+            return {
+                "name": name,
+                "type": "Serial",
+                "device": device,
+                "baudrate": baud,
                 "overrides": overrides,
             }
         if proto == "SSH":

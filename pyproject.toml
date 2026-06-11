@@ -29,6 +29,9 @@ bifrost-cm = "bifrost_app:main"
 dev = [
     "pytest>=7.4",
 ]
+serial = [
+    "pyserial>=3.5",
+]
 
 [tool.setuptools]
 py-modules = ["bifrost_app"]

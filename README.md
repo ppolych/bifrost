@@ -8,9 +8,9 @@ into a tree of saved sessions, with a built-in SFTP browser that attaches to
 the same authenticated SSH channel as the terminal so file transfers don't
 require a second login.
 
-> **Status:** early. The terminal stack, SSH, Telnet, SFTP, credential
-> storage, and session/macro persistence work today. RDP, VNC, and Serial
-> are not implemented yet — see *Not done yet* below.
+> **Status:** early. The terminal stack, SSH, Telnet, Serial, SFTP,
+> credential storage, and session/macro persistence work today. RDP and
+> VNC are not implemented yet — see *Not done yet* below.
 
 ## Features
 
@@ -124,7 +124,7 @@ plumbing).
 
 ## Not done yet
 
-- RDP / VNC / Serial session backends (some UI tabs exist).
+- RDP / VNC session backends (some UI tabs exist).
 - Cluster / auto-cluster mode (the broader version of MultiExec).
 
 ## License

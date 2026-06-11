@@ -42,6 +42,7 @@ from core.snippets import SnippetManager
 from core.network_tools import scan_ports, scan_ip_range
 from core.platform_utils import config_dir, default_monospace_font, migrate_legacy_config
 from core.settings_store import load_settings, save_settings
+from core.serial_backend import SerialBackend
 from core.ssh_backend import ParamikoBackend, SshCredentials
 from core.telnet_backend import TelnetBackend
 from core.workspaces import WorkspaceManager
@@ -907,6 +908,14 @@ class BifrostApp(QMainWindow):
                 host=session.get("host") or "localhost",
                 port=int(port) if str(port or "").isdigit() else 23,
             )
+        elif proto == "Serial":
+            baud = session.get("baudrate")
+            self.new_terminal_tab(
+                name,
+                kind="Serial",
+                device=session.get("device") or "",
+                baud=int(baud) if str(baud or "").isdigit() else 115200,
+            )
         elif proto == "Local":
             cmd = session.get("cmd")
             self.new_terminal_tab(name, command=[cmd] if isinstance(cmd, str) else cmd)
@@ -1095,6 +1104,8 @@ class BifrostApp(QMainWindow):
         ssh_session: dict | None = None,
         host=None,
         port=None,
+        device=None,
+        baud=None,
     ):
         backend = None
         session = None
@@ -1106,6 +1117,9 @@ class BifrostApp(QMainWindow):
         elif kind == "Telnet":
             backend = TelnetBackend(host or "localhost", int(port or 23))
             prefix = "📡 "
+        elif kind == "Serial":
+            backend = SerialBackend(device or "", int(baud or 115200))
+            prefix = "🔌 "
         elif ssh_session is not None or is_ssh:
             session = ssh_session or self.session_manager.find_by_name(name)
             backend = self._build_ssh_backend(name, session)

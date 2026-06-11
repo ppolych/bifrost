@@ -31,6 +31,7 @@ MATERIAL_DIR = os.path.join(ICON_DIR, "material")
 METHOD_ICON_MAP = {
     "SSH":    "dns.svg",
     "Telnet": "cable.svg",
+    "Serial": "cable.svg",
     "RDP":    "desktop_windows.svg",
     "VNC":    "screen_share.svg",
     "SFTP":   "folder_shared.svg",
