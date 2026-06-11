@@ -113,8 +113,6 @@ plumbing).
 ## Not done yet
 
 - RDP / VNC / Serial session backends (some UI tabs exist).
-- In-terminal text search — the `SearchBar` UI exists but the VT-side search
-  is unimplemented.
 - Cross-scrollback selection — today selections live in the visible buffer.
 - In-process Telnet — quick-connect shells out to the system `telnet`.
 - PyInstaller spec files for `.app` / `.exe` bundles.
