@@ -124,3 +124,53 @@ def test_multi_exec_bar_has_scope_and_auto_cluster(app):
     assert app.multi_exec_scope.itemData(0) == "all"
     assert app.multi_exec_scope.itemData(1) == "cluster"
     assert not app.auto_cluster_cb.isChecked()
+
+
+# ----- cluster membership in workspace profiles -----
+
+def test_workspace_sessions_capture_cluster_flag(app):
+    from widgets.terminal_container import TerminalContainer
+
+    member = TerminalContainer("m", ["true"], ssh_session={"name": "m", "type": "SSH", "host": "h1"})
+    outsider = TerminalContainer("o", ["true"], ssh_session={"name": "o", "type": "SSH", "host": "h2"})
+    app.tabs.addTab(member, "m")
+    app.tabs.addTab(outsider, "o")
+    app.toggle_tab_cluster(app.tabs.indexOf(member))
+
+    flags = {s["name"]: s["cluster"] for s in app._current_workspace_sessions()}
+    assert flags == {"m": True, "o": False}
+
+
+def test_open_workspace_restores_cluster_membership(app, monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog
+    from widgets.terminal_container import TerminalContainer
+
+    app.workspace_manager.upsert("w", [
+        {"name": "a", "type": "SSH", "host": "h1", "cluster": True},
+        {"name": "b", "type": "SSH", "host": "h2", "cluster": False},
+    ])
+    monkeypatch.setattr(
+        QInputDialog, "getItem", staticmethod(lambda *a, **k: ("w", True))
+    )
+
+    opened = []
+
+    def fake_activate(session):
+        container = TerminalContainer(session["name"], ["true"])
+        app.tabs.addTab(container, session["name"])
+        opened.append((session["name"], container))
+
+    monkeypatch.setattr(app, "on_session_activated", fake_activate)
+    app.open_workspace_profile()
+
+    by_name = dict(opened)
+    assert by_name["a"] in app.cluster_tabs
+    assert by_name["b"] not in app.cluster_tabs
+
+
+def test_workspace_cluster_flag_survives_save_round_trip(app):
+    app.workspace_manager.upsert("w", [
+        {"name": "a", "type": "SSH", "host": "h1", "cluster": True},
+    ])
+    restored = app.workspace_manager.get("w")
+    assert restored[0]["cluster"] is True

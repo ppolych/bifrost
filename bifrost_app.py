@@ -843,7 +843,16 @@ class BifrostApp(QMainWindow):
             QMessageBox.warning(self, "Open workspace", "Workspace is empty or missing.")
             return
         for session in sessions:
+            before = self.tabs.count()
             self.on_session_activated(session)
+            # Restore cluster membership saved with the workspace. The new tab
+            # (if one opened — the user may cancel a credential prompt) is
+            # always appended last.
+            if session.get("cluster") and self.tabs.count() > before:
+                container = self.tabs.widget(self.tabs.count() - 1)
+                if isinstance(container, TerminalContainer):
+                    self.cluster_tabs.add(container)
+        self._refresh_multi_exec_ui()
         self.status_bar.showMessage(
             f"Opened workspace {name} ({len(sessions)} session(s))", 5000,
         )
@@ -884,6 +893,7 @@ class BifrostApp(QMainWindow):
             else:
                 continue
             if session.get("type") == "SSH" or session.get("host"):
+                session["cluster"] = widget in self.cluster_tabs
                 sessions.append(session)
         return sessions
 
