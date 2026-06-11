@@ -28,8 +28,9 @@ require a second login.
 - **SFTP browser** sharing the terminal's `SSHClient` (no second auth
   roundtrip). Drag-and-drop uploads, theme-aware file icons, optional
   external editor for remote files.
-- **MultiExec** — broadcast input to every open terminal tab; viewport tints
-  red while broadcasting.
+- **MultiExec & cluster mode** — broadcast input to every open terminal tab,
+  or scope it to a cluster (right-click a tab → *Add to cluster*; optionally
+  auto-add new SSH tabs). Targeted viewports tint red while broadcasting.
 - **Quick-connect toolbar** with a method picker (SSH / Telnet / Local / WSL)
   and per-method input parsing.
 - **Wake-on-LAN** — both per-session (right-click an SSH session with a `mac`
@@ -125,7 +126,6 @@ plumbing).
 ## Not done yet
 
 - RDP / VNC session backends (some UI tabs exist).
-- Cluster / auto-cluster mode (the broader version of MultiExec).
 
 ## License
 

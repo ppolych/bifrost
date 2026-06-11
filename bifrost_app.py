@@ -15,9 +15,9 @@ import pyte
 from PyQt6.QtCore import QT_VERSION_STR, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
-    QApplication, QColorDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-    QMainWindow, QMenu, QMessageBox, QSplitter, QStatusBar, QTabBar, QTabWidget,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QColorDialog, QComboBox, QFileDialog, QHBoxLayout,
+    QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QSplitter,
+    QStatusBar, QTabBar, QTabWidget, QVBoxLayout, QWidget,
 )
 
 log = logging.getLogger(__name__)
@@ -67,6 +67,11 @@ class BifrostApp(QMainWindow):
         self.setStyleSheet(get_dark_theme())
         self.detached_windows = []
         self.pinned_tabs = set()
+        # Cluster = the subset of tabs MultiExec targets when scoped to
+        # "Cluster only". Holds container objects (not indexes) so membership
+        # survives tab reordering.
+        self.cluster_tabs = set()
+        self.multi_exec_enabled = False
         self._setup_app_menus()
         
         # Toolbar
@@ -154,11 +159,23 @@ class BifrostApp(QMainWindow):
         self.multi_exec_label = QLabel("ALL TERMINALS:")
         self.multi_exec_label.setStyleSheet("color: red; font-weight: bold; font-size: 10px;")
         self.multi_exec_layout.addWidget(self.multi_exec_label)
+        self.multi_exec_scope = QComboBox()
+        self.multi_exec_scope.addItem("All terminals", "all")
+        self.multi_exec_scope.addItem("Cluster only", "cluster")
+        self.multi_exec_scope.setToolTip(
+            "Broadcast to every tab, or only to tabs added to the cluster\n"
+            "(right-click a tab → Add to cluster)"
+        )
+        self.multi_exec_scope.currentIndexChanged.connect(lambda *_: self._refresh_multi_exec_ui())
+        self.multi_exec_layout.addWidget(self.multi_exec_scope)
         self.multi_exec_input = QLineEdit()
         self.multi_exec_input.setPlaceholderText("Type command to send to ALL active terminals...")
         self.multi_exec_input.setStyleSheet("background: #1a0000; color: #ffcccc; border: 1px solid red;")
         self.multi_exec_input.returnPressed.connect(self.broadcast_command)
         self.multi_exec_layout.addWidget(self.multi_exec_input)
+        self.auto_cluster_cb = QCheckBox("Auto-add SSH tabs")
+        self.auto_cluster_cb.setToolTip("New SSH tabs join the cluster automatically")
+        self.multi_exec_layout.addWidget(self.auto_cluster_cb)
         self.multi_exec_bar.hide()
         self.main_vbox.addWidget(self.multi_exec_bar)
 
@@ -185,7 +202,6 @@ class BifrostApp(QMainWindow):
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self.search_shortcut.activated.connect(self.toggle_terminal_search)
         
-        self.multi_exec_enabled = False
         # Re-apply visuals now that self.tabs exists so tab_position takes effect.
         self.apply_global_visuals()
         # Populate the credentials view + active-sessions browser once at startup.
@@ -334,22 +350,63 @@ class BifrostApp(QMainWindow):
     def broadcast_command(self):
         cmd = self.multi_exec_input.text() + "\r"
         if cmd:
-            for i in range(self.tabs.count()):
-                container = self.tabs.widget(i)
-                if isinstance(container, TerminalContainer):
-                    for term in container.findChildren(TerminalWidget):
-                        term.write_to_backend(cmd)
+            for container in self._broadcast_containers():
+                for term in container.findChildren(TerminalWidget):
+                    term.write_to_backend(cmd)
             self.multi_exec_input.clear()
 
     def on_multi_exec_toggled(self, enabled):
         self.multi_exec_enabled = enabled
         if enabled: self.multi_exec_bar.show()
         else: self.multi_exec_bar.hide()
+        self._refresh_multi_exec_ui()
+
+    def _multi_exec_scope_value(self) -> str:
+        return self.multi_exec_scope.currentData() or "all"
+
+    def _broadcast_containers(self) -> list[TerminalContainer]:
+        """Tabs MultiExec currently targets: all of them, or just the cluster."""
+        containers = [
+            w for w in (self.tabs.widget(i) for i in range(self.tabs.count()))
+            if isinstance(w, TerminalContainer)
+        ]
+        if self._multi_exec_scope_value() == "cluster":
+            containers = [c for c in containers if c in self.cluster_tabs]
+        return containers
+
+    def _refresh_multi_exec_ui(self):
+        """Sync the MultiExec bar label and per-terminal broadcast tint."""
+        targets = self._broadcast_containers()
+        if self._multi_exec_scope_value() == "cluster":
+            self.multi_exec_label.setText(f"CLUSTER ({len(targets)}):")
+            self.multi_exec_input.setPlaceholderText(
+                "Type command to send to the cluster tabs..."
+            )
+        else:
+            self.multi_exec_label.setText("ALL TERMINALS:")
+            self.multi_exec_input.setPlaceholderText(
+                "Type command to send to ALL active terminals..."
+            )
+        tinted = set(targets) if self.multi_exec_enabled else set()
         for i in range(self.tabs.count()):
             container = self.tabs.widget(i)
             if isinstance(container, TerminalContainer):
+                on = container in tinted
                 for term in container.findChildren(TerminalWidget):
-                    term.set_broadcast_mode(enabled)
+                    term.set_broadcast_mode(on)
+
+    def toggle_tab_cluster(self, index):
+        widget = self.tabs.widget(index)
+        if not isinstance(widget, TerminalContainer):
+            return
+        if widget in self.cluster_tabs:
+            self.cluster_tabs.discard(widget)
+            verb = "removed from"
+        else:
+            self.cluster_tabs.add(widget)
+            verb = "added to"
+        self.status_bar.showMessage(f"{self.tabs.tabText(index)} {verb} cluster", 4000)
+        self._refresh_multi_exec_ui()
 
     def show_tab_context_menu(self, pos):
         index = self.tabs.tabBar().tabAt(pos)
@@ -373,6 +430,13 @@ class BifrostApp(QMainWindow):
         duplicate_act.triggered.connect(lambda: self.new_terminal_tab(self.tabs.tabText(index)))
         menu.addAction(duplicate_act)
         widget = self.tabs.widget(index)
+        if isinstance(widget, TerminalContainer):
+            in_cluster = widget in self.cluster_tabs
+            cluster_act = QAction(
+                "Remove from cluster" if in_cluster else "Add to cluster", self
+            )
+            cluster_act.triggered.connect(lambda: self.toggle_tab_cluster(index))
+            menu.addAction(cluster_act)
         if isinstance(widget, TerminalContainer) and widget.ssh_session:
             reconnect_act = QAction("Reconnect tab", self)
             reconnect_act.triggered.connect(lambda: self._reconnect_tab(index))
@@ -1143,6 +1207,10 @@ class BifrostApp(QMainWindow):
         container.detach_requested.connect(self.detach_terminal)
         self.tabs.addTab(container, prefix + name)
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        if isinstance(backend, ParamikoBackend) and self.auto_cluster_cb.isChecked():
+            self.cluster_tabs.add(container)
+        if self.multi_exec_enabled:
+            self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
 
     def _session_from_backend(self, name: str, backend: ParamikoBackend) -> dict:
@@ -1309,6 +1377,7 @@ class BifrostApp(QMainWindow):
         index = self.tabs.indexOf(container)
         if index != -1:
             name = self.tabs.tabText(index)
+            self.cluster_tabs.discard(container)
             self.tabs.removeTab(index)
             new_win = BifrostApp(is_detached=True, settings=self.settings)
             new_win.setWindowTitle(f"Detached: {name}")
@@ -1322,13 +1391,18 @@ class BifrostApp(QMainWindow):
 
     def on_terminal_key(self, key):
         if self.macro_engine.recording: self.macro_engine.record_key(key)
+        sender = self.sender()
         if self.multi_exec_enabled:
-            for i in range(self.tabs.count()):
-                container = self.tabs.widget(i)
-                if isinstance(container, TerminalContainer):
-                    for term in container.findChildren(TerminalWidget): term.write_to_backend(key)
+            sent_to_sender = False
+            for container in self._broadcast_containers():
+                for term in container.findChildren(TerminalWidget):
+                    term.write_to_backend(key)
+                    if term is sender:
+                        sent_to_sender = True
+            # Typing in a tab outside the cluster still drives that tab.
+            if isinstance(sender, TerminalWidget) and not sent_to_sender:
+                sender.write_to_backend(key)
         else:
-            sender = self.sender()
             if isinstance(sender, TerminalWidget): sender.write_to_backend(key)
 
     def export_sessions(self):
@@ -1466,6 +1540,7 @@ class BifrostApp(QMainWindow):
                 return
         if hasattr(widget, "shutdown"):
             widget.shutdown()
+        self.cluster_tabs.discard(widget)
         widget.deleteLater()
         self.tabs.removeTab(index)
 
