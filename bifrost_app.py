@@ -31,7 +31,7 @@ from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
 from widgets.remote_monitor import RemoteMonitorWidget
 from core.styles import get_dark_theme
-from core import credentials, ip_tools, keygen, session_crypto, wake_on_lan, wsl
+from core import credentials, session_crypto, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
 from core.logging_setup import _log_path, configure_logging
@@ -39,14 +39,15 @@ from core.mobaxterm_import import parse_mobaxterm_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
 from core.snippets import SnippetManager
-from core.network_tools import scan_ports, scan_ip_range
 from core.platform_utils import config_dir, default_monospace_font, migrate_legacy_config
 from core.settings_store import load_settings, save_settings
 from core.serial_backend import SerialBackend
 from core.ssh_backend import ParamikoBackend, SshCredentials
 from core.telnet_backend import TelnetBackend
 from core.workspaces import WorkspaceManager
+from widgets.app_menus import setup_app_menus
 from widgets.credential_prompt import CredentialPrompt
+from widgets.tool_dialogs import run_tool
 
 class BifrostApp(QMainWindow):
     def __init__(self, is_detached=False, settings=None):
@@ -72,7 +73,7 @@ class BifrostApp(QMainWindow):
         # survives tab reordering.
         self.cluster_tabs = set()
         self.multi_exec_enabled = False
-        self._setup_app_menus()
+        setup_app_menus(self)
         
         # Toolbar
         self.toolbar = MainToolBar(self)
@@ -229,123 +230,6 @@ class BifrostApp(QMainWindow):
         except OSError:
             log.debug("local IP detection failed", exc_info=True)
             return "127.0.0.1"
-
-    def _setup_app_menus(self):
-        menubar = self.menuBar()
-
-        session_menu = menubar.addMenu("Session")
-        new_session = QAction("New session...", self)
-        new_session.triggered.connect(self.open_session_dialog)
-        session_menu.addAction(new_session)
-        local_terminal = QAction("Start local terminal", self)
-        local_terminal.triggered.connect(lambda: self.new_terminal_tab("Local Shell"))
-        session_menu.addAction(local_terminal)
-        session_menu.addSeparator()
-        import_act = QAction("Import sessions...", self)
-        import_act.triggered.connect(self.import_sessions)
-        session_menu.addAction(import_act)
-        export_act = QAction("Export sessions...", self)
-        export_act.triggered.connect(self.export_sessions)
-        session_menu.addAction(export_act)
-        session_menu.addSeparator()
-        close_tab = QAction("Close current tab", self)
-        close_tab.triggered.connect(self.close_current_tab)
-        session_menu.addAction(close_tab)
-
-        connections_menu = menubar.addMenu("Connections")
-        reconnect_tab = QAction("Reconnect current tab", self)
-        reconnect_tab.triggered.connect(self.reconnect_current_tab)
-        connections_menu.addAction(reconnect_tab)
-        reconnect_all = QAction("Reconnect all disconnected", self)
-        reconnect_all.triggered.connect(self._reconnect_all_disconnected)
-        connections_menu.addAction(reconnect_all)
-        disconnect_tab = QAction("Disconnect current tab", self)
-        disconnect_tab.triggered.connect(self.disconnect_current_tab)
-        connections_menu.addAction(disconnect_tab)
-        connections_menu.addSeparator()
-        sftp_act = QAction("Open SFTP here", self)
-        sftp_act.triggered.connect(self.attach_sftp_for_current_tab)
-        connections_menu.addAction(sftp_act)
-        wol_act = QAction("Wake on LAN...", self)
-        wol_act.triggered.connect(self.on_wol_dialog)
-        connections_menu.addAction(wol_act)
-        forget_act = QAction("Forget credentials for current session", self)
-        forget_act.triggered.connect(self.forget_current_session_credentials)
-        connections_menu.addAction(forget_act)
-
-        view_menu = menubar.addMenu("View")
-        sidebar_act = QAction("Toggle sidebar", self)
-        sidebar_act.triggered.connect(lambda: self.sidebar.toggle_collapse())
-        view_menu.addAction(sidebar_act)
-        for label, index in (
-            ("Sessions", 0),
-            ("Credentials", 1),
-            ("Active SSH", 2),
-            ("Local servers", 3),
-            ("Tools", 4),
-            ("Macros", 5),
-            ("Snippets", 6),
-            ("Docker", 7),
-        ):
-            act = QAction(label, self)
-            act.triggered.connect(lambda _checked=False, i=index: self.sidebar.tabs.setCurrentIndex(i))
-            view_menu.addAction(act)
-        view_menu.addSeparator()
-        sftp_pane = QAction("Toggle SFTP pane", self)
-        sftp_pane.triggered.connect(self.toggle_sftp_pane)
-        view_menu.addAction(sftp_pane)
-        view_menu.addSeparator()
-        for label, key in (("Split vertical", "vert"), ("Split horizontal", "horiz"), ("Split quad", "quad")):
-            act = QAction(label, self)
-            act.triggered.connect(lambda _checked=False, k=key: self.on_split_requested(k))
-            view_menu.addAction(act)
-        multi = QAction("Toggle MultiExec", self)
-        multi.triggered.connect(lambda: self.toolbar.multi_act.toggle())
-        view_menu.addAction(multi)
-        fullscreen = QAction("Toggle full screen", self)
-        fullscreen.triggered.connect(self.toggle_full_screen)
-        view_menu.addAction(fullscreen)
-
-        tools_menu = menubar.addMenu("Tools")
-        for tool_name in ("Port Scanner", "Network Scanner", "IP Calculator", "SSH Key Gen"):
-            act = QAction(tool_name, self)
-            act.triggered.connect(lambda _checked=False, t=tool_name: self.on_tool_triggered(t))
-            tools_menu.addAction(act)
-        tools_menu.addSeparator()
-        diagnostics = QAction("Diagnostics...", self)
-        diagnostics.triggered.connect(self.show_diagnostics)
-        tools_menu.addAction(diagnostics)
-        settings = QAction("Settings...", self)
-        settings.triggered.connect(self.open_settings_dialog)
-        tools_menu.addAction(settings)
-
-        workspace_menu = menubar.addMenu("Workspaces")
-        save_act = QAction("Save current SSH tabs...", self)
-        save_act.triggered.connect(self.save_current_workspace)
-        workspace_menu.addAction(save_act)
-
-        open_act = QAction("Open workspace...", self)
-        open_act.triggered.connect(self.open_workspace_profile)
-        workspace_menu.addAction(open_act)
-
-        delete_act = QAction("Delete workspace...", self)
-        delete_act.triggered.connect(self.delete_workspace_profile)
-        workspace_menu.addAction(delete_act)
-
-        help_menu = menubar.addMenu("Help")
-        copy_diag = QAction("Copy diagnostics", self)
-        copy_diag.triggered.connect(self.copy_diagnostics)
-        help_menu.addAction(copy_diag)
-        open_logs = QAction("Open logs folder", self)
-        open_logs.triggered.connect(self.open_logs_folder)
-        help_menu.addAction(open_logs)
-        open_config = QAction("Open config folder", self)
-        open_config.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(config_dir())))
-        help_menu.addAction(open_config)
-        help_menu.addSeparator()
-        about = QAction("About Bifrost", self)
-        about.triggered.connect(self.show_about_dialog)
-        help_menu.addAction(about)
 
     def broadcast_command(self):
         cmd = self.multi_exec_input.text() + "\r"
@@ -891,70 +775,7 @@ class BifrostApp(QMainWindow):
             term.write_to_backend(remote_path)
 
     def on_tool_triggered(self, tool_name):
-        if tool_name == "Port Scanner":
-            host, ok = QInputDialog.getText(self, "Port Scanner", "Host:", QLineEdit.EchoMode.Normal, "127.0.0.1")
-            if ok and host:
-                open_ports = scan_ports(host, 1, 100)
-                QMessageBox.information(self, "Scan Results", f"Open ports: {open_ports}")
-        elif tool_name == "Network Scanner":
-            base, ok = QInputDialog.getText(self, "Network Scanner", "IP Subnet:", QLineEdit.EchoMode.Normal, "127.0.0")
-            if ok and base:
-                active = scan_ip_range(base)
-                QMessageBox.information(self, "Network Scan", f"Active hosts found:\n{active}")
-        elif tool_name == "IP Calculator":
-            cidr, ok = QInputDialog.getText(
-                self, "IP Calculator",
-                "CIDR (e.g. 10.0.0.0/24 or 192.168.1.5):",
-                QLineEdit.EchoMode.Normal, "10.0.0.0/24",
-            )
-            if not ok or not cidr.strip():
-                return
-            try:
-                info = ip_tools.calculate(cidr)
-            except ValueError as e:
-                QMessageBox.warning(self, "IP Calculator", str(e))
-                return
-            lines = "\n".join(f"{k:<14} {v}" for k, v in info.items())
-            QMessageBox.information(self, f"IP Calculator — {cidr}", lines)
-        elif tool_name == "SSH Key Gen":
-            self._run_ssh_keygen()
-
-    def _run_ssh_keygen(self):
-        default = os.path.expanduser("~/.ssh/id_ed25519")
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Generate SSH key — choose output file", default,
-        )
-        if not path:
-            return
-        passphrase, ok = QInputDialog.getText(
-            self, "Key passphrase",
-            "Passphrase (empty = unencrypted; keyring opt-in is on next prompt):",
-            QLineEdit.EchoMode.Password,
-        )
-        if not ok:
-            return
-        try:
-            priv, pub = keygen.generate_keypair(path, algorithm="ed25519", passphrase=passphrase or None)
-        except FileExistsError as e:
-            QMessageBox.warning(self, "Key Gen", str(e))
-            return
-        except (OSError, ValueError) as e:
-            QMessageBox.warning(self, "Key Gen failed", str(e))
-            return
-        if passphrase and credentials.is_available():
-            reply = QMessageBox.question(
-                self, "Store passphrase?",
-                f"Save the passphrase for {priv} in the system keyring?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                credentials.set_passphrase(priv, passphrase)
-        QMessageBox.information(
-            self, "Key Gen",
-            f"Generated:\n• {priv}\n• {pub}\n\n"
-            "Copy the .pub line into the remote host's ~/.ssh/authorized_keys.",
-        )
+        run_tool(self, tool_name)
 
     def on_session_activated(self, session: dict):
         """Route a session opening by its explicit `type`, not by name sniffing."""
