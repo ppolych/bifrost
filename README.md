@@ -98,6 +98,19 @@ pytest tests/test_selection.py -q
 pytest tests/test_selection.py::test_word_extends_url -q
 ```
 
+## Packaging
+
+A PyInstaller spec is included for standalone bundles:
+
+```bash
+pip install pyinstaller
+pyinstaller bifrost.spec
+```
+
+Output is a onedir bundle in `dist/bifrost/` (plus `dist/Bifrost.app` on
+macOS). The spec ships `res/icons/` as data and force-bundles the dynamic
+`keyring.backends` so credential storage works in the frozen app.
+
 ## Project layout
 
 - `core/` — backend, persistence, OS integration. No Qt UI code beyond
@@ -115,7 +128,6 @@ plumbing).
 - RDP / VNC / Serial session backends (some UI tabs exist).
 - Cross-scrollback selection — today selections live in the visible buffer.
 - In-process Telnet — quick-connect shells out to the system `telnet`.
-- PyInstaller spec files for `.app` / `.exe` bundles.
 - Cluster / auto-cluster mode (the broader version of MultiExec).
 
 ## License
