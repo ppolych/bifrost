@@ -43,6 +43,7 @@ from core.network_tools import scan_ports, scan_ip_range
 from core.platform_utils import config_dir, default_monospace_font, migrate_legacy_config
 from core.settings_store import load_settings, save_settings
 from core.ssh_backend import ParamikoBackend, SshCredentials
+from core.telnet_backend import TelnetBackend
 from core.workspaces import WorkspaceManager
 from widgets.credential_prompt import CredentialPrompt
 
@@ -898,6 +899,14 @@ class BifrostApp(QMainWindow):
             self.new_terminal_tab(name, kind="WSL", distro=session.get("distro") or None)
         elif proto == "SSH":
             self.new_terminal_tab(name, ssh_session=session)
+        elif proto == "Telnet":
+            port = session.get("port")
+            self.new_terminal_tab(
+                name,
+                kind="Telnet",
+                host=session.get("host") or "localhost",
+                port=int(port) if str(port or "").isdigit() else 23,
+            )
         elif proto == "Local":
             cmd = session.get("cmd")
             self.new_terminal_tab(name, command=[cmd] if isinstance(cmd, str) else cmd)
@@ -1013,10 +1022,12 @@ class BifrostApp(QMainWindow):
             self.new_terminal_tab(display or text, ssh_session=session)
         elif method == "Telnet":
             host, _, port = text.partition(":")
-            cmd = ["telnet", host or "localhost"]
-            if port:
-                cmd.append(port)
-            self.new_terminal_tab(text or "telnet", command=cmd)
+            self.new_terminal_tab(
+                text or "telnet",
+                kind="Telnet",
+                host=host or "localhost",
+                port=int(port) if port.isdigit() else 23,
+            )
         elif method == "WSL":
             self.new_terminal_tab(f"WSL: {text or 'default'}", kind="WSL", distro=text or None)
         elif method == "Local":
@@ -1082,6 +1093,8 @@ class BifrostApp(QMainWindow):
         kind=None,
         distro=None,
         ssh_session: dict | None = None,
+        host=None,
+        port=None,
     ):
         backend = None
         session = None
@@ -1090,6 +1103,9 @@ class BifrostApp(QMainWindow):
         if kind == "WSL" or (kind is None and "WSL" in name):
             command = wsl.spawn_command(distro)
             prefix = "🐧 "
+        elif kind == "Telnet":
+            backend = TelnetBackend(host or "localhost", int(port or 23))
+            prefix = "📡 "
         elif ssh_session is not None or is_ssh:
             session = ssh_session or self.session_manager.find_by_name(name)
             backend = self._build_ssh_backend(name, session)

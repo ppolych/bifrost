@@ -146,6 +146,15 @@ class SessionDialog(QDialog):
         self.network_layout.addRow("WoL broadcast:", self.broadcast_input)
         self.tabs.addTab(self.network_tab, "Network Settings")
 
+        # Telnet sub-tab
+        self.telnet_tab = QWidget()
+        self.telnet_layout = QFormLayout(self.telnet_tab)
+        self.telnet_host_input = QLineEdit("127.0.0.1")
+        self.telnet_port_input = QLineEdit("23")
+        self.telnet_layout.addRow("Host:", self.telnet_host_input)
+        self.telnet_layout.addRow("Port:", self.telnet_port_input)
+        self.proto_tabs.addTab(self.telnet_tab, "Telnet")
+
         # RDP sub-tab (placeholder, backend not implemented)
         self.rdp_tab = QWidget()
         self.rdp_layout = QFormLayout(self.rdp_tab)
@@ -254,7 +263,12 @@ class SessionDialog(QDialog):
     def _load_session(self, session: dict) -> None:
         self.name_input.setText(session.get("name", ""))
         proto = session.get("type", "SSH")
-        tab = {"SSH": self.ssh_tab, "RDP": self.rdp_tab, "WSL": self.wsl_tab}.get(proto, self.ssh_tab)
+        tab = {
+            "SSH": self.ssh_tab,
+            "Telnet": self.telnet_tab,
+            "RDP": self.rdp_tab,
+            "WSL": self.wsl_tab,
+        }.get(proto, self.ssh_tab)
         idx = self.proto_tabs.indexOf(tab)
         if idx >= 0:
             self.proto_tabs.setCurrentIndex(idx)
@@ -276,6 +290,9 @@ class SessionDialog(QDialog):
         self.tunnels_input.setPlainText("\n".join(session.get("tunnels") or []))
         self.proxy_jump_input.setText(session.get("proxy_jump") or "")
         self.proxy_command_input.setText(session.get("proxy_command") or "")
+        if proto == "Telnet":
+            self.telnet_host_input.setText(session.get("host", "127.0.0.1"))
+            self.telnet_port_input.setText(str(session.get("port", "23") or "23"))
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -302,6 +319,17 @@ class SessionDialog(QDialog):
                 "name": name,
                 "type": "WSL",
                 "distro": distro_label,
+                "overrides": overrides,
+            }
+        if proto == "Telnet":
+            host = self.telnet_host_input.text().strip() or "127.0.0.1"
+            port = self.telnet_port_input.text().strip() or "23"
+            name = self.name_input.text().strip() or f"telnet {host}:{port}"
+            return {
+                "name": name,
+                "type": "Telnet",
+                "host": host,
+                "port": port,
                 "overrides": overrides,
             }
         if proto == "SSH":

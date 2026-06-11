@@ -85,14 +85,28 @@ def test_quick_connect_ssh_uses_default_user_when_omitted(qapp):
     assert received["ssh_session"]["port"] == 2200
 
 
-def test_quick_connect_telnet_builds_command(qapp):
+def test_quick_connect_telnet_routes_in_process(qapp):
     from bifrost_app import BifrostApp
 
     app = _bare_app()
     received = {}
     app.new_terminal_tab = lambda name, **k: received.update(k, name=name)
-    BifrostApp.on_quick_connect(app, "Telnet", "bbs.example.com:23")
-    assert received["command"] == ["telnet", "bbs.example.com", "23"]
+    BifrostApp.on_quick_connect(app, "Telnet", "bbs.example.com:2323")
+    assert received["kind"] == "Telnet"
+    assert received["host"] == "bbs.example.com"
+    assert received["port"] == 2323
+
+
+def test_quick_connect_telnet_defaults(qapp):
+    from bifrost_app import BifrostApp
+
+    app = _bare_app()
+    received = {}
+    app.new_terminal_tab = lambda name, **k: received.update(k, name=name)
+    BifrostApp.on_quick_connect(app, "Telnet", "")
+    assert received["kind"] == "Telnet"
+    assert received["host"] == "localhost"
+    assert received["port"] == 23
 
 
 def test_quick_connect_local_uses_command_path(qapp):
