@@ -778,18 +778,21 @@ class TerminalWidget(QAbstractScrollArea):
         menu.exec(self.viewport().mapToGlobal(position))
 
     def search(self, text: str, forward: bool = True) -> int:
-        """Search for text in the visible buffer and highlight the result.
-        
-        Returns the number of matches found.
+        """Search the scrollback and visible buffer; highlight and reveal the hit.
+
+        Matches are found in absolute line coordinates (whole history), and the
+        screen is paged so the current match is visible. Returns the number of
+        matches found.
         """
         if not text:
             self.clear_selection()
             self._last_search_text = ""
             return 0
-        
-        lines = self._screen_lines()
+
+        total = self._history_top_len() + self._rows + len(self.screen.history.bottom)
         matches = []
-        for r, line in enumerate(lines):
+        for r in range(total):
+            line = self._line_text(self._abs_line(r))
             start = 0
             while True:
                 idx = line.find(text, start)
@@ -797,11 +800,11 @@ class TerminalWidget(QAbstractScrollArea):
                     break
                 matches.append((r, idx, idx + len(text)))
                 start = idx + 1
-        
+
         if not matches:
             self.clear_selection()
             return 0
-            
+
         if text != self._last_search_text:
             self._last_search_text = text
             # Start from the first match if searching forward, last if backward
@@ -811,12 +814,30 @@ class TerminalWidget(QAbstractScrollArea):
                 self._search_index = (self._search_index + 1) % len(matches)
             else:
                 self._search_index = (self._search_index - 1) % len(matches)
-        
+
         r, c1, c2 = matches[self._search_index]
-        abs_r = r + self._history_top_len()
-        self._selection = (abs_r, c1, abs_r, c2 - 1)
+        self._selection = (r, c1, r, c2 - 1)
+        self._scroll_to_abs_row(r)
+        self._update_scrollbar()
         self.viewport().update()
         return len(matches)
+
+    def _scroll_to_abs_row(self, abs_row: int) -> None:
+        """Page the history until the absolute row is inside the visible window."""
+        while True:
+            top = self._history_top_len()
+            if top <= abs_row < top + self._rows:
+                return
+            try:
+                if abs_row < top:
+                    self.screen.prev_page()
+                else:
+                    self.screen.next_page()
+            except Exception:
+                log.exception("scroll-to-row paging failed")
+                return
+            if self._history_top_len() == top:
+                return  # no progress (already at the end); give up
 
     def _line_text(self, line) -> str:
         chars = []

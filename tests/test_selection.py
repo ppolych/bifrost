@@ -203,3 +203,33 @@ def test_abs_line_maps_history_buffer_and_none(term):
     assert term._line_text(term._abs_line(0)) == "line0"
     assert term._line_text(term._abs_line(top)) == f"line{top}"
     assert term._abs_line(top + term._rows + 50) is None
+
+
+# ----- search across scrollback -----
+
+def test_search_finds_match_in_scrollback_and_reveals_it(term):
+    _feed_lines(term, term._rows + 10)
+    assert len(term.screen.history.top) >= 10
+    count = term.search("line0")  # only abs row 0 contains "line0"
+    assert count == 1
+    assert term.selected_text() == "line0"
+    # The screen paged up so the match is inside the visible window.
+    assert term._history_top_len() == 0
+
+
+def test_search_cycles_through_history_matches(term):
+    _feed_lines(term, term._rows + 10)
+    total = term._rows + 10
+    count = term.search("line")
+    assert count == total
+    first = term._selection
+    term.search("line")  # advance to the next match
+    assert term._selection != first
+    assert term._search_index == 1
+
+
+def test_search_no_match_clears_selection(term):
+    _feed_lines(term, term._rows + 10)
+    term._selection = (0, 0, 0, 4)
+    assert term.search("definitely-not-here") == 0
+    assert term._selection is None
