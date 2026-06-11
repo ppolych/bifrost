@@ -8,9 +8,9 @@ into a tree of saved sessions, with a built-in SFTP browser that attaches to
 the same authenticated SSH channel as the terminal so file transfers don't
 require a second login.
 
-> **Status:** early. The terminal stack, SSH, Telnet, Serial, SFTP,
-> credential storage, and session/macro persistence work today. RDP and
-> VNC are not implemented yet — see *Not done yet* below.
+> **Status:** early. The terminal stack, SSH, Telnet, Serial, VNC, SFTP,
+> credential storage, and session/macro persistence work today. RDP is
+> not implemented yet — see *Not done yet* below.
 
 ## Features
 
@@ -31,8 +31,12 @@ require a second login.
 - **MultiExec & cluster mode** — broadcast input to every open terminal tab,
   or scope it to a cluster (right-click a tab → *Add to cluster*; optionally
   auto-add new SSH tabs). Targeted viewports tint red while broadcasting.
-- **Quick-connect toolbar** with a method picker (SSH / Telnet / Local / WSL)
-  and per-method input parsing.
+- **VNC viewer** — in-process RFB client (3.3/3.7/3.8, None + VNC password
+  auth, Raw/CopyRect encodings, DesktopSize resize) rendered in a tab with
+  full mouse/keyboard forwarding. Password is prompted per-connect, never
+  stored.
+- **Quick-connect toolbar** with a method picker (SSH / Telnet / VNC / Local
+  / WSL) and per-method input parsing.
 - **Wake-on-LAN** — both per-session (right-click an SSH session with a `mac`
   field set) and one-off from the toolbar.
 - **Macros** — record a sequence of keystrokes and replay them into the
@@ -125,7 +129,7 @@ plumbing).
 
 ## Not done yet
 
-- RDP / VNC session backends (some UI tabs exist).
+- RDP session backend (a UI tab exists).
 
 ## License
 

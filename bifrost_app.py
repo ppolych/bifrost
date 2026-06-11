@@ -48,6 +48,7 @@ from core.workspaces import WorkspaceManager
 from widgets.app_menus import setup_app_menus
 from widgets.credential_prompt import CredentialPrompt
 from widgets.tool_dialogs import run_tool
+from widgets.vnc_viewer import VncViewer
 
 class BifrostApp(QMainWindow):
     def __init__(self, is_detached=False, settings=None):
@@ -801,6 +802,8 @@ class BifrostApp(QMainWindow):
                 device=session.get("device") or "",
                 baud=int(baud) if str(baud or "").isdigit() else 115200,
             )
+        elif proto == "VNC":
+            self.open_vnc_session(session)
         elif proto == "Local":
             cmd = session.get("cmd")
             self.new_terminal_tab(name, command=[cmd] if isinstance(cmd, str) else cmd)
@@ -932,6 +935,13 @@ class BifrostApp(QMainWindow):
                 host=host or "localhost",
                 port=int(port) if port.isdigit() else 23,
             )
+        elif method == "VNC":
+            host, _, port = text.partition(":")
+            self.open_vnc_session({
+                "name": text,
+                "host": host or "localhost",
+                "port": port if port.isdigit() else 5900,
+            })
         elif method == "WSL":
             self.new_terminal_tab(f"WSL: {text or 'default'}", kind="WSL", distro=text or None)
         elif method == "Local":
@@ -1043,6 +1053,26 @@ class BifrostApp(QMainWindow):
         if self.multi_exec_enabled:
             self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
+
+    def open_vnc_session(self, session: dict):
+        """Open a VNC viewer tab. The password is prompted per-connect and
+        never persisted (the server may not need one — blank means none)."""
+        host = session.get("host") or "localhost"
+        port_raw = session.get("port")
+        port = int(port_raw) if str(port_raw or "").isdigit() else 5900
+        password, _ = CredentialPrompt.ask(
+            title=f"VNC password for {host}",
+            prompt=f"Password for {host}:{port} (leave blank if the server has none):",
+            remember_enabled=False,
+            parent=self,
+        )
+        if password is None:
+            return  # user cancelled
+        name = session.get("name") or f"{host}:{port}"
+        viewer = VncViewer(host, port, password or None, settings=self.settings)
+        self.tabs.addTab(viewer, "🖥 " + name)
+        self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        self.session_manager.add_to_recents(name)
 
     def _session_from_backend(self, name: str, backend: ParamikoBackend) -> dict:
         creds = backend.creds

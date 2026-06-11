@@ -170,6 +170,18 @@ class SessionDialog(QDialog):
         self.serial_layout.addRow(self.serial_note)
         self.proto_tabs.addTab(self.serial_tab, "Serial")
 
+        # VNC sub-tab
+        self.vnc_tab = QWidget()
+        self.vnc_layout = QFormLayout(self.vnc_tab)
+        self.vnc_host_input = QLineEdit("127.0.0.1")
+        self.vnc_port_input = QLineEdit("5900")
+        self.vnc_layout.addRow("Host:", self.vnc_host_input)
+        self.vnc_layout.addRow("Port:", self.vnc_port_input)
+        self.vnc_note = QLabel("Password (if any) is prompted at connect time and never stored.")
+        self.vnc_note.setStyleSheet("color: #888; font-size: 10px;")
+        self.vnc_layout.addRow(self.vnc_note)
+        self.proto_tabs.addTab(self.vnc_tab, "VNC")
+
         # RDP sub-tab (placeholder, backend not implemented)
         self.rdp_tab = QWidget()
         self.rdp_layout = QFormLayout(self.rdp_tab)
@@ -282,6 +294,7 @@ class SessionDialog(QDialog):
             "SSH": self.ssh_tab,
             "Telnet": self.telnet_tab,
             "Serial": self.serial_tab,
+            "VNC": self.vnc_tab,
             "RDP": self.rdp_tab,
             "WSL": self.wsl_tab,
         }.get(proto, self.ssh_tab)
@@ -312,6 +325,9 @@ class SessionDialog(QDialog):
         if proto == "Serial":
             self.serial_device_input.setText(session.get("device") or "")
             self.serial_baud_combo.setCurrentText(str(session.get("baudrate", "115200") or "115200"))
+        if proto == "VNC":
+            self.vnc_host_input.setText(session.get("host", "127.0.0.1"))
+            self.vnc_port_input.setText(str(session.get("port", "5900") or "5900"))
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -347,6 +363,17 @@ class SessionDialog(QDialog):
             return {
                 "name": name,
                 "type": "Telnet",
+                "host": host,
+                "port": port,
+                "overrides": overrides,
+            }
+        if proto == "VNC":
+            host = self.vnc_host_input.text().strip() or "127.0.0.1"
+            port = self.vnc_port_input.text().strip() or "5900"
+            name = self.name_input.text().strip() or f"vnc {host}:{port}"
+            return {
+                "name": name,
+                "type": "VNC",
                 "host": host,
                 "port": port,
                 "overrides": overrides,

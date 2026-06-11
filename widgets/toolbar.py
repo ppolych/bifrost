@@ -16,6 +16,7 @@ from core.icons import named_icon, session_icon
 QUICK_CONNECT_METHODS = [
     ("SSH", "SSH", {"type": "SSH"}),
     ("Telnet", "Telnet", {"type": "Telnet"}),
+    ("VNC", "VNC", {"type": "VNC"}),
     ("Local", "Local", {"type": "Local"}),
     ("WSL", "WSL", {"type": "WSL"}),
 ]
@@ -121,6 +122,7 @@ class MainToolBar(QToolBar):
         placeholders = {
             "SSH": "user@host  or  user@host:port",
             "Telnet": "host  or  host:port",
+            "VNC": "host  or  host:port (default 5900)",
             "Local": "/bin/bash  (path to shell)",
             "WSL": "Distro name (blank = default)",
         }
