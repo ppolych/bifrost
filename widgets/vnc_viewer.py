@@ -26,6 +26,7 @@ _KEYSYMS = {
     Qt.Key.Key_Enter: 0xFF8D,
     Qt.Key.Key_Backspace: 0xFF08,
     Qt.Key.Key_Tab: 0xFF09,
+    Qt.Key.Key_Backtab: 0xFF09,  # Qt reports Shift+Tab as Backtab; Shift goes separately
     Qt.Key.Key_Escape: 0xFF1B,
     Qt.Key.Key_Insert: 0xFF63,
     Qt.Key.Key_Delete: 0xFFFF,
@@ -62,6 +63,17 @@ def qt_event_to_keysym(event) -> int | None:
             return code
         if code > 0xFF:  # X11 rule for general unicode
             return 0x01000000 + code
+    # Control-modified printables: Qt reports the control character ("\x01"
+    # for Ctrl+A), but the server wants the plain key keysym alongside the
+    # Control press it already received. Qt printable key codes are ASCII
+    # (letters uppercase), so map back to the character.
+    key = event.key()
+    if 0x20 <= key <= 0x7E:
+        if ord("A") <= key <= ord("Z") and not (
+            event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+        ):
+            return key + 0x20  # unshifted → lowercase keysym
+        return key
     return None
 
 
@@ -77,11 +89,16 @@ class VncViewer(QWidget):
         self.settings = settings
         self._status: str | None = f"Connecting to {host}:{port}..."
         self._button_mask = 0
+        # Cached framebuffer copy for painting; refreshed only when the client
+        # reports a new frame, not on every repaint (status text, resize, ...).
+        self._paint_buf = b""
+        self._paint_size = (0, 0)
+        self._frame_dirty = True
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
 
-        self._frame_arrived.connect(self.update)
+        self._frame_arrived.connect(self._on_frame)
         self._client_resized.connect(self._on_resized)
         self._client_connected.connect(self._on_connected)
         self._client_errored.connect(self._on_errored)
@@ -106,7 +123,12 @@ class VncViewer(QWidget):
         self.setToolTip(name)
         self.update()
 
+    def _on_frame(self):
+        self._frame_dirty = True
+        self.update()
+
     def _on_resized(self, _w: int, _h: int):
+        self._frame_dirty = True
         self.updateGeometry()
         self.update()
 
@@ -133,7 +155,7 @@ class VncViewer(QWidget):
     # ----- painting -----
 
     def sizeHint(self) -> QSize:
-        _, w, h = self.client.snapshot()
+        w, h = self.client.size()
         return QSize(w or 800, h or 600)
 
     def _target_rect(self, fb_w: int, fb_h: int) -> QRect:
@@ -148,11 +170,16 @@ class VncViewer(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#000000"))
-        fb, fb_w, fb_h = self.client.snapshot()
-        if fb_w > 0 and fb_h > 0 and len(fb) >= fb_w * fb_h * 4:
-            # QImage does not copy the buffer; keep it referenced on self so it
-            # outlives the paint (dropping it mid-paint segfaults).
-            self._paint_buf = bytes(fb)
+        if self._frame_dirty:
+            # snapshot() copies under the client's lock, so the frame can't be
+            # torn by a concurrent blit on the worker thread.
+            self._paint_buf, w, h = self.client.snapshot()
+            self._paint_size = (w, h)
+            self._frame_dirty = False
+        fb_w, fb_h = self._paint_size
+        if fb_w > 0 and fb_h > 0 and len(self._paint_buf) >= fb_w * fb_h * 4:
+            # QImage does not copy the buffer; it must stay referenced on self
+            # so it outlives the paint (dropping it mid-paint segfaults).
             image = QImage(self._paint_buf, fb_w, fb_h, fb_w * 4, QImage.Format.Format_RGBX8888)
             painter.drawImage(self._target_rect(fb_w, fb_h), image)
         if self._status:
@@ -165,7 +192,7 @@ class VncViewer(QWidget):
     # ----- input -----
 
     def _pos_to_fb(self, pos) -> tuple[int, int] | None:
-        _, fb_w, fb_h = self.client.snapshot()
+        fb_w, fb_h = self.client.size()
         target = self._target_rect(fb_w, fb_h)
         if target.isEmpty():
             return None
@@ -206,6 +233,11 @@ class VncViewer(QWidget):
         bit = 8 if event.angleDelta().y() > 0 else 16  # buttons 4/5
         self.client.send_pointer(fb_pos[0], fb_pos[1], self._button_mask | bit)
         self.client.send_pointer(fb_pos[0], fb_pos[1], self._button_mask)
+
+    def focusNextPrevChild(self, _next: bool) -> bool:
+        # Keep Tab/Shift+Tab as input to the remote desktop instead of letting
+        # Qt move focus (same contract as TerminalWidget).
+        return False
 
     def keyPressEvent(self, event):
         keysym = qt_event_to_keysym(event)

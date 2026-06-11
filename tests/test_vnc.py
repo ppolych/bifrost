@@ -232,6 +232,30 @@ def test_desktop_size_resizes_framebuffer():
     assert (w, h) == (16, 9)
 
 
+def test_out_of_bounds_rect_is_rejected():
+    from core.vnc_client import VncError
+
+    # 2x2 raw rect at (3,1) on a 4x2 framebuffer: x+w and y+h both overflow.
+    data = bytes(2 * 2 * 4)
+    payload = struct.pack(">xH", 1) + struct.pack(">HHHHi", 3, 1, 2, 2, ENC_RAW) + data
+    c = _client_with_stream(payload, 4, 2)
+    with pytest.raises(VncError):
+        c._read_framebuffer_update()
+    # The framebuffer must not have been grown or corrupted.
+    fb, w, h = c.snapshot()
+    assert len(fb) == w * h * 4
+
+
+def test_snapshot_returns_consistent_copy():
+    c = VncClient("unused")
+    c._resize_fb(2, 2)
+    fb, w, h = c.snapshot()
+    assert isinstance(fb, bytes)
+    # Mutating the live framebuffer afterwards must not affect the snapshot.
+    c._blit(0, 0, 1, 1, bytes([255, 0, 0, 0]))
+    assert fb == bytes(2 * 2 * 4)
+
+
 # ----- auth primitive -----
 
 def test_reverse_bits():
@@ -251,25 +275,49 @@ def test_auth_response_shape_and_truncation():
 
 # ----- widget layer -----
 
+class FakeKeyEvent:
+    def __init__(self, key, text="", modifiers=None):
+        from PyQt6.QtCore import Qt
+
+        self._key, self._text = key, text
+        self._modifiers = Qt.KeyboardModifier.NoModifier if modifiers is None else modifiers
+
+    def key(self):
+        return self._key
+
+    def text(self):
+        return self._text
+
+    def modifiers(self):
+        return self._modifiers
+
+
 def test_qt_event_to_keysym(qapp):
     from PyQt6.QtCore import Qt
     from widgets.vnc_viewer import qt_event_to_keysym
 
-    class FakeEvent:
-        def __init__(self, key, text=""):
-            self._key, self._text = key, text
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_Return)) == 0xFF0D
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_A, "a")) == ord("a")
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_A, "A")) == ord("A")
+    assert qt_event_to_keysym(FakeKeyEvent(0, "€")) == 0x01000000 + ord("€")
+    assert qt_event_to_keysym(FakeKeyEvent(0, "")) is None
+    # Shift+Tab arrives as Backtab; it must still produce the Tab keysym.
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_Backtab)) == 0xFF09
 
-        def key(self):
-            return self._key
 
-        def text(self):
-            return self._text
+def test_qt_event_to_keysym_ctrl_combinations(qapp):
+    """Qt reports Ctrl+letter as a control character ("\\x01" for Ctrl+A);
+    the server wants the plain letter keysym next to the Control press."""
+    from PyQt6.QtCore import Qt
+    from widgets.vnc_viewer import qt_event_to_keysym
 
-    assert qt_event_to_keysym(FakeEvent(Qt.Key.Key_Return)) == 0xFF0D
-    assert qt_event_to_keysym(FakeEvent(Qt.Key.Key_A, "a")) == ord("a")
-    assert qt_event_to_keysym(FakeEvent(Qt.Key.Key_A, "A")) == ord("A")
-    assert qt_event_to_keysym(FakeEvent(0, "€")) == 0x01000000 + ord("€")
-    assert qt_event_to_keysym(FakeEvent(0, "")) is None
+    ctrl = Qt.KeyboardModifier.ControlModifier
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_A, "\x01", ctrl)) == ord("a")
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_C, "\x03", ctrl)) == ord("c")
+    shifted = ctrl | Qt.KeyboardModifier.ShiftModifier
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_A, "\x01", shifted)) == ord("A")
+    # Ctrl+digit can report empty text but still carries an ASCII key code.
+    assert qt_event_to_keysym(FakeKeyEvent(Qt.Key.Key_2, "", ctrl)) == ord("2")
 
 
 def test_viewer_connects_and_paints(qapp):
@@ -320,6 +368,21 @@ def test_session_activation_routes_vnc(qapp):
     )
     assert received["host"] == "h"
     assert received["port"] == "5901"
+
+
+def test_tab_is_live_counts_vnc_viewer(qapp):
+    from bifrost_app import BifrostApp
+    from widgets.vnc_viewer import VncViewer
+
+    server = FakeRfbServer()
+    server.start()
+    app = BifrostApp.__new__(BifrostApp)
+    viewer = VncViewer("127.0.0.1", server.port)
+    # Live while connecting/connected → close confirmation and the quit
+    # session count must include it.
+    assert BifrostApp._tab_is_live(app, viewer)
+    viewer.shutdown()
+    assert not BifrostApp._tab_is_live(app, viewer)
 
 
 def test_quick_connect_vnc_routes(qapp):

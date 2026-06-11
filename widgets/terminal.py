@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+from itertools import islice
 
 import pyte
 from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal
@@ -435,6 +436,18 @@ class TerminalWidget(QAbstractScrollArea):
     def _history_top_len(self) -> int:
         return len(self.screen.history.top)
 
+    def _iter_abs_lines(self):
+        """Yield every line in absolute order: scrollback above, visible
+        buffer, scrollback below.
+
+        Sequential scans must use this rather than `_abs_line` per row —
+        history.top/bottom are deques, where per-index access is O(n).
+        """
+        yield from self.screen.history.top
+        for row in range(self._rows):
+            yield self.screen.buffer[row]
+        yield from self.screen.history.bottom
+
     def _abs_line(self, abs_row: int):
         """Line at an absolute row: scrollback above, visible buffer, scrollback below."""
         top = self.screen.history.top
@@ -571,10 +584,8 @@ class TerminalWidget(QAbstractScrollArea):
             return ""
         r1, c1, r2, c2 = sel
         lines: list[str] = []
-        for row in range(r1, r2 + 1):
-            line = self._abs_line(row)
-            if line is None:
-                continue
+        for offset, line in enumerate(islice(self._iter_abs_lines(), r1, r2 + 1)):
+            row = r1 + offset
             start = c1 if row == r1 else 0
             end = c2 if row == r2 else self._cols
             text = "".join(line[c].data or " " for c in range(start, end))
@@ -807,10 +818,9 @@ class TerminalWidget(QAbstractScrollArea):
             self._last_search_text = ""
             return 0
 
-        total = self._history_top_len() + self._rows + len(self.screen.history.bottom)
         matches = []
-        for r in range(total):
-            line = self._line_text(self._abs_line(r))
+        for r, line_obj in enumerate(self._iter_abs_lines()):
+            line = self._line_text(line_obj)
             start = 0
             while True:
                 idx = line.find(text, start)

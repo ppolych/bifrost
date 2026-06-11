@@ -128,10 +128,23 @@ class VncClient:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout)
 
+    def is_open(self) -> bool:
+        """True while the connection is up or still being established."""
+        return not self._closed
+
     def snapshot(self):
-        """Return (framebuffer-bytes, width, height) for painting."""
+        """Return (framebuffer-copy, width, height) for painting.
+
+        The copy is taken under the lock so the caller never sees a frame
+        torn by a concurrent blit, and the result is safe to hand to QImage.
+        """
         with self._fb_lock:
-            return self._fb, self._fb_w, self._fb_h
+            return bytes(self._fb), self._fb_w, self._fb_h
+
+    def size(self) -> tuple[int, int]:
+        """Framebuffer (width, height) without copying pixel data."""
+        with self._fb_lock:
+            return self._fb_w, self._fb_h
 
     # ----- input (called from the GUI thread) -----
 
@@ -322,8 +335,21 @@ class VncClient:
             else:
                 raise VncError(f"server sent unrequested encoding {enc}")
 
+    def _check_rect(self, x: int, y: int, w: int, h: int) -> None:
+        """Reject server rects outside the framebuffer (caller holds _fb_lock).
+
+        Without this, the slice assignments below would wrap into following
+        rows or silently grow the bytearray past width*height*4.
+        """
+        if x + w > self._fb_w or y + h > self._fb_h:
+            raise VncError(
+                f"server sent rect {w}x{h}+{x}+{y} outside the "
+                f"{self._fb_w}x{self._fb_h} framebuffer"
+            )
+
     def _blit(self, x: int, y: int, w: int, h: int, data: bytes) -> None:
         with self._fb_lock:
+            self._check_rect(x, y, w, h)
             fb_w = self._fb_w
             row_bytes = w * _BPP
             for row in range(h):
@@ -333,6 +359,8 @@ class VncClient:
 
     def _copy_rect(self, src_x: int, src_y: int, x: int, y: int, w: int, h: int) -> None:
         with self._fb_lock:
+            self._check_rect(src_x, src_y, w, h)
+            self._check_rect(x, y, w, h)
             fb_w = self._fb_w
             row_bytes = w * _BPP
             # Read the whole source region first so overlapping moves are safe.

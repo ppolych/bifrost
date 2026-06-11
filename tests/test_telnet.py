@@ -56,6 +56,13 @@ def test_subnegotiation_is_stripped(backend):
     assert backend._process_incoming(data) == b"abcd"
 
 
+def test_subnegotiation_with_escaped_iac_before_se_byte(backend):
+    # An escaped 0xFF (IAC IAC) followed by a 0xF0 *data* byte must not be
+    # mistaken for the IAC SE terminator — only an unescaped IAC SE ends it.
+    data = b"ab" + bytes([IAC, SB, OPT_NAWS, IAC, IAC, SE, 1, 2, IAC, SE]) + b"cd"
+    assert backend._process_incoming(data) == b"abcd"
+
+
 def test_split_iac_sequence_across_chunks(backend):
     # IAC arrives at the end of one chunk, the command completes in the next.
     assert backend._process_incoming(b"ab" + bytes([IAC])) == b"ab"
@@ -67,6 +74,25 @@ def test_negotiation_replies_are_not_repeated(backend):
     backend._process_incoming(bytes([IAC, WILL, OPT_ECHO]))
     backend._process_incoming(bytes([IAC, WILL, OPT_ECHO]))
     assert backend._sent.count(bytes([IAC, DO, OPT_ECHO])) == 1
+
+
+def test_renegotiation_after_state_change_is_answered(backend):
+    # Servers toggle ECHO off and back on around password prompts; each state
+    # change must be acknowledged (only same-state re-requests are ignored).
+    backend._process_incoming(bytes([IAC, WILL, OPT_ECHO]))
+    backend._process_incoming(bytes([IAC, WONT, OPT_ECHO]))
+    backend._process_incoming(bytes([IAC, WILL, OPT_ECHO]))
+    assert backend._sent.count(bytes([IAC, DO, OPT_ECHO])) == 2
+    assert backend._sent.count(bytes([IAC, DONT, OPT_ECHO])) == 1
+
+
+def test_naws_can_be_reenabled_after_dont(backend):
+    backend._process_incoming(bytes([IAC, DO, OPT_NAWS]))
+    backend._process_incoming(bytes([IAC, DONT, OPT_NAWS]))
+    assert not backend._naws_enabled
+    backend._process_incoming(bytes([IAC, DO, OPT_NAWS]))
+    assert backend._naws_enabled
+    assert backend._sent.count(bytes([IAC, WILL, OPT_NAWS])) == 2
 
 
 def test_write_escapes_iac_and_maps_cr():
@@ -126,6 +152,27 @@ def test_loopback_round_trip():
 
     b.close()
     server.close()
+
+
+def test_read_skips_negotiation_only_chunks_without_eof():
+    """A negotiation-only chunk (e.g. an IAC NOP keepalive) must neither read
+    as EOF nor consume a stack frame per chunk — read() loops until data."""
+    import time
+
+    server_sock, client_sock = socket.socketpair()
+    b = TelnetBackend("example.invalid", 23)
+    b._sock = client_sock
+    b._ready.set()
+
+    NOP = 241
+    for _ in range(3):
+        server_sock.sendall(bytes([IAC, NOP]))
+    time.sleep(0.05)  # let the keepalives land as separate-from-data chunks
+    server_sock.sendall(b"hello")
+
+    assert b.read() == b"hello"
+    b.close()
+    server_sock.close()
 
 
 def test_connect_failure_renders_in_terminal():

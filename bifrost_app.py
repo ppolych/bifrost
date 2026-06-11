@@ -1434,6 +1434,8 @@ class BifrostApp(QMainWindow):
 
     def _tab_is_live(self, widget) -> bool:
         """A tab is 'live' if it contains at least one terminal whose backend is still running."""
+        if isinstance(widget, VncViewer):
+            return widget.client.is_open()
         if not isinstance(widget, TerminalContainer):
             return False
         for term in widget.findChildren(TerminalWidget):
@@ -1617,6 +1619,10 @@ class BifrostApp(QMainWindow):
         if backend is not None:
             backend.close()
         old_text = self.tabs.tabText(tab_index)
+        # Carry cluster membership over to the replacement container (and drop
+        # the dead widget from the set so it doesn't linger there).
+        was_clustered = widget in self.cluster_tabs
+        self.cluster_tabs.discard(widget)
         self.tabs.removeTab(tab_index)
         widget.shutdown()
         widget.deleteLater()
@@ -1631,6 +1637,10 @@ class BifrostApp(QMainWindow):
         container.detach_requested.connect(self.detach_terminal)
         self.tabs.insertTab(tab_index, container, old_text)
         self.tabs.setCurrentIndex(tab_index)
+        if was_clustered:
+            self.cluster_tabs.add(container)
+        if self.multi_exec_enabled:
+            self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
         self.status_bar.showMessage(
             f"Reconnecting {session.get('user', '')}@{session.get('host', '')}", 4000,

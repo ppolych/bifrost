@@ -55,7 +55,12 @@ class TelnetBackend:
         self._pending = b""          # partial IAC sequence split across recv()s
         self._naws_enabled = False
         self._winsize = (24, 80)     # (rows, cols)
-        self._replied: set[tuple[int, int]] = set()  # negotiation loop guard
+        # Option state for negotiation loop avoidance (RFC 854): we only reply
+        # to a request when it changes our state, so re-requests for the
+        # current state are ignored but legitimate renegotiation still works
+        # (e.g. servers toggling ECHO off and back on around password prompts).
+        self._remote_on: set[int] = set()  # options we've acked the server enabling
+        self._local_on: set[int] = set()   # options we've enabled on our side
 
     # ----- lifecycle -----
 
@@ -88,23 +93,27 @@ class TelnetBackend:
             self._error_emitted = True
             return f"\r\n\x1b[31m[connection failed: {self._connect_error}]\x1b[0m\r\n".encode()
 
-        if self._sock is None:
+        sock = self._sock
+        if sock is None:
             return b""
 
-        try:
-            data = self._sock.recv(size)
-        except OSError as e:
-            log.debug("telnet recv failed: %s", e)
-            return b""
-        if not data:
-            return b""
-
-        cleaned = self._process_incoming(data)
-        if not cleaned:
-            # All bytes were negotiation traffic; don't return b"" (the reader
-            # treats that as EOF) — recurse for the next chunk instead.
-            return self.read(size)
-        return cleaned
+        # Loop (not recurse) past negotiation-only chunks: servers can send
+        # bare IAC traffic indefinitely (e.g. IAC NOP keepalives on an idle
+        # session), and each one must not consume a stack frame.
+        while not self._closed:
+            try:
+                data = sock.recv(size)
+            except OSError as e:
+                log.debug("telnet recv failed: %s", e)
+                return b""
+            if not data:
+                return b""
+            cleaned = self._process_incoming(data)
+            if cleaned:
+                return cleaned
+            # All bytes were negotiation traffic; don't return b"" (the
+            # reader treats that as EOF) — wait for the next chunk.
+        return b""
 
     def write(self, data) -> None:
         if self._closed or self._sock is None:
@@ -176,7 +185,21 @@ class TelnetBackend:
                 self._negotiate(cmd, data[i + 2])
                 i += 3
             elif cmd == SB:
-                end = data.find(bytes([IAC, SE]), i + 2)
+                # Find the terminating IAC SE, treating IAC IAC as an escaped
+                # data byte (a plain find() would false-match an escaped 0xFF
+                # followed by a 0xF0 data byte and desync the stream).
+                j = i + 2
+                end = -1
+                while j < n:
+                    if data[j] != IAC:
+                        j += 1
+                    elif j + 1 >= n:
+                        break  # IAC at chunk end; sequence incomplete
+                    elif data[j + 1] == SE:
+                        end = j
+                        break
+                    else:
+                        j += 2  # IAC IAC escape (or stray command): skip pair
                 if end == -1:
                     self._pending = data[i:]
                     break
@@ -186,28 +209,39 @@ class TelnetBackend:
         return bytes(out)
 
     def _negotiate(self, cmd: int, opt: int) -> None:
-        if (cmd, opt) in self._replied:
-            return  # already answered; don't loop with a broken peer
-        self._replied.add((cmd, opt))
         if cmd == WILL:
             # Server offers an option: accept remote ECHO and SGA, refuse the rest.
-            self._send_raw(bytes([IAC, DO if opt in (OPT_ECHO, OPT_SGA) else DONT, opt]))
+            if opt in self._remote_on:
+                return  # already enabled; re-acking would risk a reply loop
+            if opt in (OPT_ECHO, OPT_SGA):
+                self._remote_on.add(opt)
+                self._send_raw(bytes([IAC, DO, opt]))
+            else:
+                self._send_raw(bytes([IAC, DONT, opt]))
         elif cmd == WONT:
-            self._send_raw(bytes([IAC, DONT, opt]))
+            if opt in self._remote_on:
+                self._remote_on.discard(opt)
+                self._send_raw(bytes([IAC, DONT, opt]))
         elif cmd == DO:
             # Server asks us to enable an option: we can do NAWS and SGA.
+            if opt in self._local_on:
+                return  # already enabled
             if opt == OPT_NAWS:
                 self._naws_enabled = True
+                self._local_on.add(opt)
                 self._send_raw(bytes([IAC, WILL, OPT_NAWS]))
                 self._send_naws()
             elif opt == OPT_SGA:
+                self._local_on.add(opt)
                 self._send_raw(bytes([IAC, WILL, OPT_SGA]))
             else:
                 self._send_raw(bytes([IAC, WONT, opt]))
         elif cmd == DONT:
             if opt == OPT_NAWS:
                 self._naws_enabled = False
-            self._send_raw(bytes([IAC, WONT, opt]))
+            if opt in self._local_on:
+                self._local_on.discard(opt)
+                self._send_raw(bytes([IAC, WONT, opt]))
 
     def _send_naws(self) -> None:
         rows, cols = self._winsize
