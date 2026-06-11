@@ -133,3 +133,73 @@ def test_settings_dialog_exposes_copy_on_select(qapp):
     dlg.copy_on_select_cb.setChecked(True)
     out = dlg.get_settings()
     assert out["copy_on_select"] is True
+
+
+# ----- cross-scrollback selection (absolute coordinates) -----
+
+def _feed_lines(term, n: int, start: int = 0):
+    for i in range(start, start + n):
+        _feed(term, f"line{i}\r\n")
+
+
+def test_selection_spans_scrollback(term):
+    _feed_lines(term, term._rows + 10)
+    top = len(term.screen.history.top)
+    assert top >= 10
+    # From the very first scrollback line down into the visible buffer.
+    term._selection = (0, 0, top + 1, term._cols - 1)
+    lines = term.selected_text().splitlines()
+    assert lines[0] == "line0"
+    assert len(lines) == top + 2
+
+
+def test_selection_sticks_to_content_as_output_scrolls(term):
+    _feed_lines(term, term._rows + 5)
+    # Absolute row i holds f"line{i}".
+    term._selection = (3, 0, 3, 4)
+    assert term.selected_text() == "line3"
+    # New output pushes more lines into history; the selection must not drift.
+    _feed_lines(term, 5, start=term._rows + 5)
+    assert term.selected_text() == "line3"
+
+
+def test_word_select_is_absolute_with_history(term):
+    _feed_lines(term, term._rows + 10)
+    # Visible row 0 currently shows f"line{top}".
+    top = len(term.screen.history.top)
+    term._select_word_at(0, 0)
+    r1, _, r2, _ = term._selection
+    assert r1 == r2 == top
+    assert term.selected_text() == f"line{top}"
+
+
+def test_search_selection_is_absolute_with_history(term):
+    _feed_lines(term, term._rows + 10)
+    top = len(term.screen.history.top)
+    target = f"line{top + 2}"  # visible row 2
+    assert term.search(target) >= 1
+    assert term.selected_text() == target
+
+
+def test_select_visible_is_absolute_with_history(term):
+    _feed_lines(term, term._rows + 10)
+    top = len(term.screen.history.top)
+    term._select_visible()
+    assert term._selection == (top, 0, top + term._rows - 1, term._cols - 1)
+
+
+def test_clear_scrollback_drops_selection(term):
+    _feed(term, "hello")
+    term._selection = (0, 0, 0, 4)
+    term._clear_scrollback()
+    assert term._selection is None
+
+
+def test_abs_line_maps_history_buffer_and_none(term):
+    _feed_lines(term, term._rows + 10)
+    top = len(term.screen.history.top)
+    assert term._abs_line(-1) is None
+    # History line and visible-buffer line round-trip through _line_text.
+    assert term._line_text(term._abs_line(0)) == "line0"
+    assert term._line_text(term._abs_line(top)) == f"line{top}"
+    assert term._abs_line(top + term._rows + 50) is None

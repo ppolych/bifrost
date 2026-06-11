@@ -126,7 +126,6 @@ plumbing).
 ## Not done yet
 
 - RDP / VNC / Serial session backends (some UI tabs exist).
-- Cross-scrollback selection — today selections live in the visible buffer.
 - In-process Telnet — quick-connect shells out to the system `telnet`.
 - Cluster / auto-cluster mode (the broader version of MultiExec).
 

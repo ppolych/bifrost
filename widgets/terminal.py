@@ -155,9 +155,11 @@ class TerminalWidget(QAbstractScrollArea):
         self._blink_timer = QTimer(self)
         self._blink_timer.timeout.connect(self._toggle_cursor)
 
-        # Selection — (row1, col1, row2, col2) in visible-buffer coords, or None.
-        # Normalized via _normalized_selection() at use sites so backwards drags
-        # work transparently.
+        # Selection — (row1, col1, row2, col2) in *absolute* line coords, or
+        # None. Absolute row = len(history.top) + visible row, so a selection
+        # is anchored to content: it survives scrolling and new output, and can
+        # span scrollback. Normalized via _normalized_selection() at use sites
+        # so backwards drags work transparently.
         self._selection: tuple[int, int, int, int] | None = None
         self._dragging = False
 
@@ -430,6 +432,25 @@ class TerminalWidget(QAbstractScrollArea):
         row = max(0, min(self._rows - 1, int(pos.y() / self._char_h)))
         return row, col
 
+    def _history_top_len(self) -> int:
+        return len(self.screen.history.top)
+
+    def _abs_line(self, abs_row: int):
+        """Line at an absolute row: scrollback above, visible buffer, scrollback below."""
+        top = self.screen.history.top
+        n_top = len(top)
+        if abs_row < 0:
+            return None
+        if abs_row < n_top:
+            return top[abs_row]
+        if abs_row < n_top + self._rows:
+            return self.screen.buffer[abs_row - n_top]
+        bottom = self.screen.history.bottom
+        idx = abs_row - n_top - self._rows
+        if idx < len(bottom):
+            return bottom[idx]
+        return None
+
     def _normalized_selection(self) -> tuple[int, int, int, int] | None:
         """Return selection with (r1,c1) <= (r2,c2) in reading order, or None.
 
@@ -472,7 +493,8 @@ class TerminalWidget(QAbstractScrollArea):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             row, col = self._pos_to_cell(event.position().toPoint())
-            self._selection = (row, col, row, col)
+            abs_row = row + self._history_top_len()
+            self._selection = (abs_row, col, abs_row, col)
             self._dragging = True
             self.viewport().update()
             return
@@ -482,7 +504,7 @@ class TerminalWidget(QAbstractScrollArea):
         if self._dragging and self._selection is not None:
             row, col = self._pos_to_cell(event.position().toPoint())
             r1, c1, _, _ = self._selection
-            self._selection = (r1, c1, row, col)
+            self._selection = (r1, c1, row + self._history_top_len(), col)
             self.viewport().update()
             return
         super().mouseMoveEvent(event)
@@ -507,6 +529,7 @@ class TerminalWidget(QAbstractScrollArea):
         super().mouseDoubleClickEvent(event)
 
     def _select_word_at(self, row: int, col: int) -> None:
+        """Word-select at a *visible* (row, col); selection is stored absolute."""
         line = self.screen.buffer[row]
         if not self._is_word_char(line[col].data or ""):
             return  # clicked on whitespace; ignore
@@ -516,18 +539,24 @@ class TerminalWidget(QAbstractScrollArea):
         right = col
         while right < self._cols - 1 and self._is_word_char(line[right + 1].data or ""):
             right += 1
-        self._selection = (row, left, row, right)
+        abs_row = row + self._history_top_len()
+        self._selection = (abs_row, left, abs_row, right)
         self.viewport().update()
 
     def selected_text(self) -> str:
-        """Extract selected text. Each line is rstripped of trailing spaces."""
+        """Extract selected text (absolute rows, so scrollback lines are included).
+
+        Each line is rstripped of trailing spaces.
+        """
         sel = self._normalized_selection()
         if sel is None:
             return ""
         r1, c1, r2, c2 = sel
         lines: list[str] = []
         for row in range(r1, r2 + 1):
-            line = self.screen.buffer[row]
+            line = self._abs_line(row)
+            if line is None:
+                continue
             start = c1 if row == r1 else 0
             end = c2 if row == r2 else self._cols
             text = "".join(line[c].data or " " for c in range(start, end))
@@ -542,7 +571,8 @@ class TerminalWidget(QAbstractScrollArea):
         return True
 
     def _select_visible(self) -> None:
-        self._selection = (0, 0, self._rows - 1, self._cols - 1)
+        top = self._history_top_len()
+        self._selection = (top, 0, top + self._rows - 1, self._cols - 1)
         self.viewport().update()
 
     def _update_scrollbar(self):
@@ -580,6 +610,10 @@ class TerminalWidget(QAbstractScrollArea):
         sel_bg_color = QColor(self.settings.get("selection_bg") or "#3465a4")
         sel_fg_color = QColor(self.settings.get("selection_fg") or "#ffffff")
 
+        # Selection is stored in absolute rows; visible rows are offset by the
+        # number of scrollback lines above the viewport.
+        sel_offset = self._history_top_len()
+
         for row in range(self._rows):
             line = buffer[row]
             x = 0.0
@@ -593,7 +627,7 @@ class TerminalWidget(QAbstractScrollArea):
                 # Selection uses an explicit selection palette (rather than
                 # reverse-video) so the user sees consistent highlight colors
                 # over already-reversed text too.
-                selected = self._in_selection(row, col)
+                selected = self._in_selection(row + sel_offset, col)
                 if cell.reverse:
                     fg, bg = bg, fg
                 if selected:
@@ -604,7 +638,7 @@ class TerminalWidget(QAbstractScrollArea):
                 run_end = col + 1
                 while run_end < self._cols:
                     nxt = line[run_end]
-                    nxt_selected = self._in_selection(row, run_end)
+                    nxt_selected = self._in_selection(row + sel_offset, run_end)
                     if (
                         nxt.fg == cell.fg
                         and nxt.bg == cell.bg
@@ -779,7 +813,8 @@ class TerminalWidget(QAbstractScrollArea):
                 self._search_index = (self._search_index - 1) % len(matches)
         
         r, c1, c2 = matches[self._search_index]
-        self._selection = (r, c1, r, c2 - 1)
+        abs_r = r + self._history_top_len()
+        self._selection = (abs_r, c1, abs_r, c2 - 1)
         self.viewport().update()
         return len(matches)
 
@@ -850,6 +885,8 @@ class TerminalWidget(QAbstractScrollArea):
             self.screen.reset()
         except Exception:
             log.exception("screen reset failed")
+        # Absolute selection coords are meaningless after the history is gone.
+        self._selection = None
         self._update_scrollbar()
         self.viewport().update()
 
