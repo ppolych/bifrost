@@ -233,3 +233,35 @@ def test_search_no_match_clears_selection(term):
     term._selection = (0, 0, 0, 4)
     assert term.search("definitely-not-here") == 0
     assert term._selection is None
+
+
+# ----- drag auto-scroll at viewport edges -----
+
+def test_drag_above_viewport_pages_scrollback_up(term):
+    from PyQt6.QtCore import QPoint
+
+    _feed_lines(term, term._rows + 10)
+    top_before = term._history_top_len()
+    assert top_before >= 10
+    term._autoscroll_during_drag(QPoint(5, -5))
+    assert term._history_top_len() < top_before
+
+
+def test_drag_below_viewport_pages_scrollback_down(term):
+    from PyQt6.QtCore import QPoint
+
+    _feed_lines(term, term._rows + 10)
+    # Scroll up first so there is somewhere to page back down to.
+    term.screen.prev_page()
+    top_scrolled = term._history_top_len()
+    term._autoscroll_during_drag(QPoint(5, term.viewport().height() + 5))
+    assert term._history_top_len() > top_scrolled
+
+
+def test_drag_inside_viewport_does_not_page(term):
+    from PyQt6.QtCore import QPoint
+
+    _feed_lines(term, term._rows + 10)
+    top_before = term._history_top_len()
+    term._autoscroll_during_drag(QPoint(5, 5))
+    assert term._history_top_len() == top_before

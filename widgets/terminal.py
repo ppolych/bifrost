@@ -502,12 +502,30 @@ class TerminalWidget(QAbstractScrollArea):
 
     def mouseMoveEvent(self, event):
         if self._dragging and self._selection is not None:
-            row, col = self._pos_to_cell(event.position().toPoint())
+            pos = event.position().toPoint()
+            self._autoscroll_during_drag(pos)
+            row, col = self._pos_to_cell(pos)
             r1, c1, _, _ = self._selection
             self._selection = (r1, c1, row + self._history_top_len(), col)
             self.viewport().update()
             return
         super().mouseMoveEvent(event)
+
+    def _autoscroll_during_drag(self, pos) -> None:
+        """Dragging past the top/bottom edge pages the scrollback, so a
+        selection can be extended beyond the visible window (the anchor is
+        absolute, so it stays put)."""
+        try:
+            if pos.y() < 0:
+                self.screen.prev_page()
+            elif pos.y() > self.viewport().height():
+                self.screen.next_page()
+            else:
+                return
+        except Exception:
+            log.exception("drag autoscroll paging failed")
+            return
+        self._update_scrollbar()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self._dragging:
