@@ -14,10 +14,8 @@ def scan_ports(host, start_port=1, end_port=100):
         return open_ports
     for port in range(start_port, end_port + 1):
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.01)
-                if s.connect_ex((host, port)) == 0:
-                    open_ports.append(port)
+            with socket.create_connection((host, port), timeout=0.05):
+                open_ports.append(port)
         except OSError:
             continue
     return open_ports

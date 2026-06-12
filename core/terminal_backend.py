@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 
@@ -26,8 +27,11 @@ class TerminalBackend:
 
     def _get_default_shell(self):
         if IS_WINDOWS:
-            return ["cmd.exe"]
-        return [os.environ.get("SHELL", "/bin/bash")]
+            return [shutil.which("cmd.exe") or "cmd.exe"]
+        shell = os.environ.get("SHELL") or ""
+        if shell and os.path.exists(shell):
+            return [shell]
+        return [shutil.which("bash") or shutil.which("sh") or "/bin/sh"]
 
     def _normalize_command(self, command) -> list[str] | str:
         if command is None:

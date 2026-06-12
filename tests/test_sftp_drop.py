@@ -305,6 +305,14 @@ def test_download_selected_items_sanitizes_local_names(browser, monkeypatch):
     assert browser._download_queue == [(os.path.join("C:/Downloads", "trailing"), "/home/user/trailing. ")]
 
 
+def test_safe_local_name_avoids_windows_reserved_device_names():
+    from widgets.sftp_browser import _safe_local_name
+
+    assert _safe_local_name("CON") == "CON_"
+    assert _safe_local_name("com1.txt") == "com1_.txt"
+    assert _safe_local_name("report.txt") == "report.txt"
+
+
 def test_open_remote_folder_refreshes_listing(browser, monkeypatch):
     refreshed = []
     monkeypatch.setattr(browser, "_refresh", lambda: refreshed.append(True))

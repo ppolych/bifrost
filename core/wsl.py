@@ -21,10 +21,17 @@ def list_distros() -> list[str]:
         return []
     if result.returncode != 0:
         return []
-    # `wsl.exe --list --quiet` emits UTF-16LE with NUL padding.
-    raw = result.stdout.decode("utf-16-le", errors="ignore")
+    raw = _decode_wsl_list_output(result.stdout)
     distros = [line.strip() for line in raw.splitlines() if line.strip()]
     return distros
+
+
+def _decode_wsl_list_output(data: bytes) -> str:
+    # `wsl.exe --list --quiet` normally emits UTF-16LE with NUL padding, but
+    # tests and some wrapper environments can produce UTF-8.
+    if b"\x00" in data:
+        return data.decode("utf-16-le", errors="ignore").replace("\x00", "")
+    return data.decode("utf-8", errors="replace")
 
 
 def spawn_command(distro: str | None = None) -> list[str]:

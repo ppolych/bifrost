@@ -119,6 +119,11 @@ _EXT_THEME_ICONS = {
 log = logging.getLogger(__name__)
 
 _LOCAL_FILENAME_UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 def _format_size(n: int) -> str:
@@ -133,6 +138,9 @@ def _format_size(n: int) -> str:
 
 def _safe_local_name(name: str, default: str = "download") -> str:
     cleaned = _LOCAL_FILENAME_UNSAFE.sub("_", name or "").strip(" .")
+    stem, ext = os.path.splitext(cleaned)
+    if stem.upper() in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"{stem}_{ext}"
     return cleaned or default
 
 

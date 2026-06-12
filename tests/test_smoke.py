@@ -165,6 +165,21 @@ def test_wsl_list_distros_handles_failed_wsl_exe(monkeypatch):
     assert wsl.list_distros() == []
 
 
+def test_wsl_list_distros_decodes_utf8_output(monkeypatch):
+    import subprocess
+
+    from core import wsl
+
+    monkeypatch.setattr(wsl.sys, "platform", "win32")
+    monkeypatch.setattr(
+        wsl.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout=b"Ubuntu\nDebian\n"),
+    )
+
+    assert wsl.list_distros() == ["Ubuntu", "Debian"]
+
+
 def test_wsl_list_distros_handles_os_error(monkeypatch):
     from core import wsl
 
@@ -196,26 +211,24 @@ def test_scan_ports_clamps_range_and_ignores_socket_errors(monkeypatch):
 
     scanned = []
 
-    class FakeSocket:
+    class Conn:
         def __enter__(self):
             return self
 
         def __exit__(self, *args):
             return False
 
-        def settimeout(self, timeout):
-            pass
+    def fake_create_connection(target, timeout):
+        scanned.append((target, timeout))
+        if target[1] != 3:
+            raise OSError("network unreachable")
+        return Conn()
 
-        def connect_ex(self, target):
-            scanned.append(target)
-            if target[1] == 2:
-                raise OSError("network unreachable")
-            return 0 if target[1] == 3 else 1
-
-    monkeypatch.setattr(nt.socket, "socket", lambda *args, **kwargs: FakeSocket())
+    monkeypatch.setattr(nt.socket, "create_connection", fake_create_connection)
 
     assert nt.scan_ports("example.invalid", -10, 3) == [3]
-    assert [port for _host, port in scanned] == [1, 2, 3]
+    assert [target[1] for target, _timeout in scanned] == [1, 2, 3]
+    assert {timeout for _target, timeout in scanned} == {0.05}
     assert nt.scan_ports("example.invalid", 5, 4) == []
     assert nt.scan_ports("example.invalid", "bad", 4) == []
 

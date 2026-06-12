@@ -33,6 +33,22 @@ def test_parse_containers_output():
     }]
 
 
+def test_local_container_listing_reports_cli_errors(monkeypatch):
+    import subprocess
+
+    import core.docker_utils as docker_utils
+
+    def fail(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args[0], stderr="daemon unavailable")
+
+    monkeypatch.setattr(docker_utils.subprocess, "check_output", fail)
+
+    containers, error = docker_utils.list_containers_with_error()
+
+    assert containers == []
+    assert error == "daemon unavailable"
+
+
 def test_remote_container_listing_uses_backend_exec():
     from core.docker_utils import list_remote_containers
 

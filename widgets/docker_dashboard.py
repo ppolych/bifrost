@@ -65,7 +65,7 @@ class DockerDashboard(QWidget):
         if self.ssh_backend is not None:
             containers, error = docker_utils.list_remote_containers(self.ssh_backend)
         else:
-            containers = docker_utils.list_containers()
+            containers, error = docker_utils.list_containers_with_error()
         self.tree.clear()
         if not containers:
             message = error or "Docker is not running or has no containers"

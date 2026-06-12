@@ -60,6 +60,31 @@ def test_ip_tools_rejects_garbage():
         calculate("not-an-ip")
 
 
+def test_port_scan_uses_platform_address_resolution(monkeypatch):
+    import core.network_tools as nt
+
+    attempts = []
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_create_connection(address, timeout):
+        attempts.append((address, timeout))
+        host, port = address
+        if host == "localhost" and port == 2:
+            return Conn()
+        raise OSError("closed")
+
+    monkeypatch.setattr(nt.socket, "create_connection", fake_create_connection)
+
+    assert nt.scan_ports("localhost", 1, 3) == [2]
+    assert attempts[0] == (("localhost", 1), 0.05)
+
+
 # ---------------------------------------------------------------------------
 # Key generation
 # ---------------------------------------------------------------------------
@@ -128,6 +153,17 @@ def test_session_export_import_round_trip(qapp, tmp_path, monkeypatch):
     assert dst.find_by_name("host-A") is None
     dst.import_sessions(str(export_path))
     assert dst.find_by_name("host-A")["host"] == "1.1.1.1"
+
+
+def test_local_http_server_binds_loopback_and_reuses_port():
+    from widgets.local_servers import LocalTcpServer
+
+    server = LocalTcpServer(("127.0.0.1", 0), object)
+    try:
+        assert server.server_address[0] == "127.0.0.1"
+        assert LocalTcpServer.allow_reuse_address is True
+    finally:
+        server.server_close()
 
 
 # ---------------------------------------------------------------------------

@@ -96,6 +96,29 @@ def test_terminal_backend_posix_string_command_is_not_split_into_chars(monkeypat
     assert backend.command == ["/bin/zsh"]
 
 
+def test_terminal_backend_posix_default_shell_falls_back_when_env_is_bad(monkeypatch):
+    import core.terminal_backend as terminal_backend
+
+    monkeypatch.setattr(terminal_backend, "IS_WINDOWS", False)
+    monkeypatch.setenv("SHELL", "/missing/shell")
+    monkeypatch.setattr(terminal_backend.shutil, "which", lambda name: "/bin/sh" if name == "sh" else None)
+
+    backend = terminal_backend.TerminalBackend()
+
+    assert backend.command == ["/bin/sh"]
+
+
+def test_terminal_backend_windows_default_shell_uses_path_lookup(monkeypatch):
+    import core.terminal_backend as terminal_backend
+
+    monkeypatch.setattr(terminal_backend, "IS_WINDOWS", True)
+    monkeypatch.setattr(terminal_backend.shutil, "which", lambda name: r"C:\Windows\System32\cmd.exe")
+
+    backend = terminal_backend.TerminalBackend()
+
+    assert backend.command == [r"C:\Windows\System32\cmd.exe"]
+
+
 def test_terminal_backend_windows_cmdline_quotes_paths_with_spaces(monkeypatch):
     import core.terminal_backend as terminal_backend
 

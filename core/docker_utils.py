@@ -23,13 +23,21 @@ def parse_containers(output: str):
 
 def list_containers():
     """Return a list of dicts with container info."""
+    containers, _error = list_containers_with_error()
+    return containers
+
+
+def list_containers_with_error():
+    """Return local containers and an error message when Docker cannot be queried."""
     try:
         # Get ID, Names, Image, Status
         cmd = ["docker", "ps", "-a", "--format", DOCKER_PS_FORMAT]
-        output = subprocess.check_output(cmd, text=True, timeout=5)
-        return parse_containers(output)
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return []
+        output = subprocess.check_output(cmd, text=True, timeout=5, stderr=subprocess.PIPE)
+        return parse_containers(output), ""
+    except subprocess.CalledProcessError as e:
+        return [], (e.stderr or str(e)).strip()
+    except (FileNotFoundError, OSError) as e:
+        return [], str(e)
 
 def list_remote_containers(backend):
     command = f"docker ps -a --format {shlex.quote(DOCKER_PS_FORMAT)}"

@@ -2,12 +2,18 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
     QLabel, QPushButton, QHBoxLayout, QMessageBox
 )
-from PyQt6.QtCore import Qt, QThread
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import http.server
 import socketserver
-import socket
+
+
+class LocalTcpServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
 
 class ServerThread(QThread):
+    failed = pyqtSignal(int, str)
+
     def __init__(self, port):
         super().__init__()
         self.port = port
@@ -16,10 +22,10 @@ class ServerThread(QThread):
     def run(self):
         handler = http.server.SimpleHTTPRequestHandler
         try:
-            with socketserver.TCPServer(("", self.port), handler) as self.httpd:
+            with LocalTcpServer(("127.0.0.1", self.port), handler) as self.httpd:
                 self.httpd.serve_forever()
         except Exception as e:
-            print(f"Server error: {e}")
+            self.failed.emit(self.port, str(e) or e.__class__.__name__)
 
     def stop(self):
         if self.httpd:
@@ -71,6 +77,7 @@ class LocalServersManager(QWidget):
 
         if type_ == "HTTP":
             thread = ServerThread(port)
+            thread.failed.connect(self._server_failed)
             thread.start()
             self.threads[port] = thread
             item.setText(2, "Running")
@@ -89,3 +96,14 @@ class LocalServersManager(QWidget):
             del self.threads[port]
             item.setText(2, "Stopped")
             item.setForeground(2, Qt.GlobalColor.red)
+
+    def _server_failed(self, port: int, error: str):
+        thread = self.threads.pop(port, None)
+        if thread is not None:
+            thread.wait(1000)
+        for item in self.items.values():
+            if item.text(1) == str(port):
+                item.setText(2, "Failed")
+                item.setForeground(2, Qt.GlobalColor.red)
+                break
+        QMessageBox.warning(self, "Local server", f"Failed to start server on 127.0.0.1:{port}\n\n{error}")
