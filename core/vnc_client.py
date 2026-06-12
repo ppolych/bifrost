@@ -1,15 +1,7 @@
 """In-process VNC (RFB) client.
 
-Protocol-only — no Qt. `VncClient` runs the connection on a daemon thread and
-reports through plain callbacks invoked *from that thread*; the widget layer
-(`widgets/vnc_viewer.py`) bridges them onto the GUI thread with signals.
-
-Supported: RFB 3.3/3.7/3.8 handshakes, security types None and VNC
-Authentication (DES challenge-response), Raw and CopyRect encodings, and the
-DesktopSize pseudo-encoding. The pixel format is pinned to 32-bit true colour
-with red/green/blue in ascending memory bytes, which maps 1:1 onto
-QImage.Format_RGBX8888 so the widget can wrap the framebuffer without
-conversion.
+Protocol-only; callbacks fire from the worker thread and the Qt widget bridges
+them back to the GUI thread.
 """
 
 from __future__ import annotations
@@ -20,52 +12,20 @@ import struct
 import threading
 from typing import Callable, Optional
 
+from core.vnc_framebuffer import blit_rect, copy_rect
+from core.vnc_protocol import (
+    BPP, ENC_COPY_RECT, ENC_DESKTOP_SIZE, ENC_RAW, SEC_INVALID, SEC_NONE,
+    SEC_VNC_AUTH, _reverse_bits, vnc_auth_response,
+)
+
 log = logging.getLogger(__name__)
-
-SEC_INVALID = 0
-SEC_NONE = 1
-SEC_VNC_AUTH = 2
-
-ENC_RAW = 0
-ENC_COPY_RECT = 1
-ENC_DESKTOP_SIZE = -223
-
-_BPP = 4  # bytes per pixel of our negotiated format
 
 
 class VncError(Exception):
     pass
 
 
-def _reverse_bits(byte: int) -> int:
-    out = 0
-    for i in range(8):
-        out = (out << 1) | ((byte >> i) & 1)
-    return out
-
-
-def vnc_auth_response(password: str, challenge: bytes) -> bytes:
-    """DES-encrypt the 16-byte challenge with the bit-reversed password key.
-
-    VNC's quirk: the 8-byte DES key is the password (truncated/zero-padded)
-    with the *bits of each byte reversed*. Single DES == 3DES with K1=K2=K3,
-    which lets us use the cryptography package instead of shipping DES.
-    """
-    from cryptography.hazmat.primitives.ciphers import Cipher, modes
-    try:  # cryptography >= 48 moved 3DES to the decrepit module
-        from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
-    except ImportError:  # pragma: no cover - older cryptography
-        from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
-
-    key = password.encode("latin-1", "replace")[:8].ljust(8, b"\0")
-    key = bytes(_reverse_bits(b) for b in key)
-    encryptor = Cipher(TripleDES(key * 3), modes.ECB()).encryptor()
-    return encryptor.update(challenge) + encryptor.finalize()
-
-
 class VncClient:
-    """RFB client; all callbacks fire on the worker thread."""
-
     def __init__(
         self,
         host: str,
@@ -121,9 +81,6 @@ class VncClient:
                 pass
 
     def join(self, timeout: float | None = None) -> None:
-        """Wait for the worker thread to finish. Call after close() when the
-        callback target is about to be destroyed — a callback firing into a
-        deleted QObject crashes."""
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout)
@@ -133,16 +90,10 @@ class VncClient:
         return not self._closed
 
     def snapshot(self):
-        """Return (framebuffer-copy, width, height) for painting.
-
-        The copy is taken under the lock so the caller never sees a frame
-        torn by a concurrent blit, and the result is safe to hand to QImage.
-        """
         with self._fb_lock:
             return bytes(self._fb), self._fb_w, self._fb_h
 
     def size(self) -> tuple[int, int]:
-        """Framebuffer (width, height) without copying pixel data."""
         with self._fb_lock:
             return self._fb_w, self._fb_h
 
@@ -287,7 +238,7 @@ class VncClient:
 
     def _resize_fb(self, width: int, height: int) -> None:
         with self._fb_lock:
-            self._fb = bytearray(width * height * _BPP)
+            self._fb = bytearray(width * height * BPP)
             self._fb_w = width
             self._fb_h = height
         if self._on_resize:
@@ -325,7 +276,7 @@ class VncClient:
         for _ in range(nrects):
             x, y, w, h, enc = struct.unpack(">HHHHi", self._recv_exact(12))
             if enc == ENC_RAW:
-                data = self._recv_exact(w * h * _BPP)
+                data = self._recv_exact(w * h * BPP)
                 self._blit(x, y, w, h, data)
             elif enc == ENC_COPY_RECT:
                 src_x, src_y = struct.unpack(">HH", self._recv_exact(4))
@@ -335,40 +286,10 @@ class VncClient:
             else:
                 raise VncError(f"server sent unrequested encoding {enc}")
 
-    def _check_rect(self, x: int, y: int, w: int, h: int) -> None:
-        """Reject server rects outside the framebuffer (caller holds _fb_lock).
-
-        Without this, the slice assignments below would wrap into following
-        rows or silently grow the bytearray past width*height*4.
-        """
-        if x + w > self._fb_w or y + h > self._fb_h:
-            raise VncError(
-                f"server sent rect {w}x{h}+{x}+{y} outside the "
-                f"{self._fb_w}x{self._fb_h} framebuffer"
-            )
-
     def _blit(self, x: int, y: int, w: int, h: int, data: bytes) -> None:
         with self._fb_lock:
-            self._check_rect(x, y, w, h)
-            fb_w = self._fb_w
-            row_bytes = w * _BPP
-            for row in range(h):
-                dst = ((y + row) * fb_w + x) * _BPP
-                src = row * row_bytes
-                self._fb[dst:dst + row_bytes] = data[src:src + row_bytes]
+            blit_rect(self._fb, self._fb_w, self._fb_h, x, y, w, h, data, VncError)
 
     def _copy_rect(self, src_x: int, src_y: int, x: int, y: int, w: int, h: int) -> None:
         with self._fb_lock:
-            self._check_rect(src_x, src_y, w, h)
-            self._check_rect(x, y, w, h)
-            fb_w = self._fb_w
-            row_bytes = w * _BPP
-            # Read the whole source region first so overlapping moves are safe.
-            rows = [
-                bytes(self._fb[((src_y + r) * fb_w + src_x) * _BPP:
-                               ((src_y + r) * fb_w + src_x) * _BPP + row_bytes])
-                for r in range(h)
-            ]
-            for r, chunk in enumerate(rows):
-                dst = ((y + r) * fb_w + x) * _BPP
-                self._fb[dst:dst + row_bytes] = chunk
+            copy_rect(self._fb, self._fb_w, self._fb_h, src_x, src_y, x, y, w, h, VncError)
