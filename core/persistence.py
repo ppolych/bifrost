@@ -3,6 +3,16 @@ import logging
 
 from core import security, session_crypto
 from core.platform_utils import atomic_write_json, config_path, load_json
+from core.session_tree import (
+    insert_after_in_dict,
+    list_at,
+    rename_dict_key,
+    resolve_container,
+    session_index,
+    uniquify_key,
+    uniquify_name,
+    walk_for_name,
+)
 
 log = logging.getLogger(__name__)
 
@@ -86,14 +96,14 @@ class SessionManager:
 
     def import_group(self, group_name: str, data) -> str:
         """Import a top-level group without overwriting an existing group."""
-        unique = _uniquify_key(self.sessions, group_name)
+        unique = uniquify_key(self.sessions, group_name)
         self.sessions[unique] = data
         self.save()
         return unique
 
     def find_by_name(self, name: str) -> dict | None:
         """Walk the nested folder/list structure and return the first session matching `name`."""
-        return _walk_for_name(self.sessions, name)
+        return walk_for_name(self.sessions, name)
 
     # ----- folder / group ops -----
     #
@@ -102,23 +112,6 @@ class SessionManager:
     # containers are malleable — an empty [] becomes {} on first sub-group add,
     # and vice versa for sessions. Non-empty containers refuse the wrong kind.
 
-    def _resolve_container(self, path):
-        """Return (parent_dict, key) so callers can read/replace the folder
-        at the leaf of `path`. None if any segment is missing."""
-        if not path:
-            return None, None
-        node = self.sessions
-        for part in path[:-1]:
-            if not isinstance(node, dict) or part not in node:
-                return None, None
-            node = node[part]
-            if not isinstance(node, dict):
-                return None, None
-        last = path[-1]
-        if not isinstance(node, dict) or last not in node:
-            return None, None
-        return node, last
-
     def add_subgroup(self, parent_path, name: str) -> str | None:
         """Create an empty sub-group under `parent_path` (list of folder names,
         empty for root). Returns the (possibly uniquified) name, or None if
@@ -126,7 +119,7 @@ class SessionManager:
         if not parent_path:
             parent = self.sessions
         else:
-            container, key = self._resolve_container(parent_path)
+            container, key = resolve_container(self.sessions, parent_path)
             if container is None:
                 return None
             target = container[key]
@@ -139,7 +132,7 @@ class SessionManager:
                     "sub-groups can't be mixed at the same level."
                 )
             parent = target
-        unique = _uniquify_key(parent, name)
+        unique = uniquify_key(parent, name)
         parent[unique] = []
         self.save()
         return unique
@@ -152,7 +145,7 @@ class SessionManager:
         if not parent_path:
             # Fall back to the historical default landing zone.
             return self.add_session("User sessions", session_data) or session_data.get("name")
-        container, key = self._resolve_container(parent_path)
+        container, key = resolve_container(self.sessions, parent_path)
         if container is None:
             return None
         target = container[key]
@@ -166,7 +159,7 @@ class SessionManager:
             )
         existing_names = {s.get("name", "") for s in target if isinstance(s, dict)}
         original = session_data.get("name", "session")
-        unique = _uniquify_name(existing_names, original)
+        unique = uniquify_name(existing_names, original)
         if unique != original:
             session_data = dict(session_data)
             session_data["name"] = unique
@@ -186,7 +179,7 @@ class SessionManager:
         if not path[:-1]:
             parent = self.sessions
         else:
-            container, key = self._resolve_container(path[:-1])
+            container, key = resolve_container(self.sessions, path[:-1])
             if container is None:
                 return False
             parent = container[key]
@@ -199,7 +192,7 @@ class SessionManager:
             return True
         if new_name in parent:
             raise ValueError(f"A group named “{new_name}” already exists here.")
-        _rename_dict_key(parent, old, new_name)
+        rename_dict_key(parent, old, new_name)
         self.save()
         return True
 
@@ -209,8 +202,8 @@ class SessionManager:
         new_name = new_name.strip()
         if not new_name:
             return False
-        container = self._list_at(parent_path)
-        idx = _session_index(container, session) if container is not None else None
+        container = list_at(self.sessions, parent_path)
+        idx = session_index(container, session) if container is not None else None
         if container is None or idx is None:
             return False
         if new_name == container[idx].get("name"):
@@ -223,8 +216,8 @@ class SessionManager:
 
     def update_session(self, parent_path, session: dict, new_data: dict) -> bool:
         """Replace a session dict in-place while preserving list position."""
-        container = self._list_at(parent_path)
-        idx = _session_index(container, session) if container is not None else None
+        container = list_at(self.sessions, parent_path)
+        idx = session_index(container, session) if container is not None else None
         if container is None or idx is None:
             return False
         new_name = (new_data.get("name") or "").strip()
@@ -244,7 +237,7 @@ class SessionManager:
         if not path[:-1]:
             parent = self.sessions
         else:
-            container, key = self._resolve_container(path[:-1])
+            container, key = resolve_container(self.sessions, path[:-1])
             if container is None:
                 return False
             parent = container[key]
@@ -259,8 +252,8 @@ class SessionManager:
 
     def delete_session(self, parent_path, session: dict) -> bool:
         """Delete a session dict from the list at `parent_path`."""
-        container = self._list_at(parent_path)
-        idx = _session_index(container, session) if container is not None else None
+        container = list_at(self.sessions, parent_path)
+        idx = session_index(container, session) if container is not None else None
         if container is None or idx is None:
             return False
         del container[idx]
@@ -275,7 +268,7 @@ class SessionManager:
         if not path[:-1]:
             parent = self.sessions
         else:
-            container, key = self._resolve_container(path[:-1])
+            container, key = resolve_container(self.sessions, path[:-1])
             if container is None:
                 return None
             parent = container[key]
@@ -284,99 +277,22 @@ class SessionManager:
         old = path[-1]
         if old not in parent:
             return None
-        new_name = _uniquify_key(parent, f"{old} (copy)")
-        _insert_after_in_dict(parent, old, new_name, copy.deepcopy(parent[old]))
+        new_name = uniquify_key(parent, f"{old} (copy)")
+        insert_after_in_dict(parent, old, new_name, copy.deepcopy(parent[old]))
         self.save()
         return new_name
 
     def duplicate_session(self, parent_path, session: dict) -> dict | None:
         """Append a deep copy of `session` to the list at `parent_path` with
         a ‘(copy)’-suffixed name. Returns the new session dict, or None."""
-        container = self._list_at(parent_path)
-        idx = _session_index(container, session) if container is not None else None
+        container = list_at(self.sessions, parent_path)
+        idx = session_index(container, session) if container is not None else None
         if container is None or idx is None:
             return None
         clone = copy.deepcopy(container[idx])
         existing_names = {s.get("name", "") for s in container if isinstance(s, dict)}
-        clone["name"] = _uniquify_name(existing_names, f"{container[idx].get('name', 'session')} (copy)")
+        clone["name"] = uniquify_name(existing_names, f"{container[idx].get('name', 'session')} (copy)")
         container.insert(idx + 1, clone)
         self.save()
         return clone
 
-    def _list_at(self, path):
-        """Return the session list at `path`, or None if `path` doesn't point
-        at a list-typed folder."""
-        if not path:
-            return None
-        container, key = self._resolve_container(path)
-        if container is None:
-            return None
-        target = container[key]
-        return target if isinstance(target, list) else None
-
-
-def _uniquify_key(d: dict, name: str) -> str:
-    if name not in d:
-        return name
-    i = 2
-    while f"{name} ({i})" in d:
-        i += 1
-    return f"{name} ({i})"
-
-
-def _uniquify_name(taken, name: str) -> str:
-    taken = set(taken)
-    if name not in taken:
-        return name
-    i = 2
-    while f"{name} ({i})" in taken:
-        i += 1
-    return f"{name} ({i})"
-
-
-def _session_index(container: list | None, session: dict) -> int | None:
-    """Return the index for a session object or an equal dict from Qt item data."""
-    if container is None:
-        return None
-    for i, item in enumerate(container):
-        if item is session:
-            return i
-    for i, item in enumerate(container):
-        if item == session:
-            return i
-    return None
-
-
-def _rename_dict_key(d: dict, old: str, new: str) -> None:
-    """Rename in place, preserving insertion order."""
-    out = {(new if k == old else k): v for k, v in d.items()}
-    d.clear()
-    d.update(out)
-
-
-def _insert_after_in_dict(d: dict, after_key: str, new_key: str, new_value) -> None:
-    """Insert (new_key, new_value) right after `after_key`, in place."""
-    out = {}
-    inserted = False
-    for k, v in d.items():
-        out[k] = v
-        if k == after_key and not inserted:
-            out[new_key] = new_value
-            inserted = True
-    if not inserted:
-        out[new_key] = new_value
-    d.clear()
-    d.update(out)
-
-
-def _walk_for_name(node, name: str):
-    if isinstance(node, dict):
-        for value in node.values():
-            hit = _walk_for_name(value, name)
-            if hit is not None:
-                return hit
-    elif isinstance(node, list):
-        for item in node:
-            if isinstance(item, dict) and item.get("name") == name:
-                return item
-    return None
