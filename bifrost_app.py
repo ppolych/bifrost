@@ -975,7 +975,7 @@ class BifrostApp(QMainWindow):
         if not ok or not name.strip():
             return
         try:
-            self.workspace_manager.upsert(name, sessions)
+            self.workspace_manager.upsert(name, sessions, layout=self._current_workspace_layout())
         except ValueError as e:
             QMessageBox.warning(self, "Save workspace failed", str(e))
             return
@@ -993,10 +993,22 @@ class BifrostApp(QMainWindow):
         )
         if not ok or not name:
             return
-        sessions = self.workspace_manager.get(name)
+        profile = self.workspace_manager.get_profile(name)
+        sessions = profile.get("sessions", [])
         if not sessions:
             QMessageBox.warning(self, "Open workspace", "Workspace is empty or missing.")
             return
+        if self.settings.get("confirm_workspace_reconnect", True):
+            reply = QMessageBox.question(
+                self,
+                "Open workspace",
+                f"Open {len(sessions)} remote session{'s' if len(sessions) != 1 else ''} from '{name}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        first_new_tab = self.tabs.count()
         for session in sessions:
             before = self.tabs.count()
             self.on_session_activated(session)
@@ -1007,6 +1019,7 @@ class BifrostApp(QMainWindow):
                 container = self.tabs.widget(self.tabs.count() - 1)
                 if isinstance(container, TerminalContainer):
                     self.cluster_tabs.add(container)
+        self._restore_workspace_layout(profile.get("layout") or {}, first_new_tab)
         self._refresh_multi_exec_ui()
         self.status_bar.showMessage(
             f"Opened workspace {name} ({len(sessions)} session(s))", 5000,
@@ -1051,6 +1064,44 @@ class BifrostApp(QMainWindow):
                 session["cluster"] = widget in self.cluster_tabs
                 sessions.append(session)
         return sessions
+
+    def _current_workspace_layout(self) -> dict:
+        return {
+            "main_splitter_sizes": self.splitter.sizes(),
+            "sidebar_splitter_sizes": self.sidebar.content_splitter.sizes(),
+            "last_sidebar_tab": self.sidebar.tabs.currentIndex(),
+            "active_tab": self.tabs.currentIndex(),
+        }
+
+    def _restore_workspace_layout(self, layout: dict, first_new_tab: int) -> None:
+        if not isinstance(layout, dict):
+            return
+        main_sizes = layout.get("main_splitter_sizes")
+        if (
+            isinstance(main_sizes, list)
+            and len(main_sizes) == 2
+            and all(isinstance(v, int) for v in main_sizes)
+        ):
+            self.splitter.setSizes(main_sizes)
+        sidebar_sizes = layout.get("sidebar_splitter_sizes")
+        if (
+            isinstance(sidebar_sizes, list)
+            and len(sidebar_sizes) == 2
+            and all(isinstance(v, int) for v in sidebar_sizes)
+        ):
+            self.sidebar.content_splitter.setSizes(sidebar_sizes)
+        try:
+            sidebar_tab = int(layout.get("last_sidebar_tab", self.sidebar.tabs.currentIndex()))
+        except (TypeError, ValueError):
+            sidebar_tab = self.sidebar.tabs.currentIndex()
+        if 0 <= sidebar_tab < self.sidebar.tabs.count():
+            self.sidebar.tabs.setCurrentIndex(sidebar_tab)
+        try:
+            active_tab = int(layout.get("active_tab", -1))
+        except (TypeError, ValueError):
+            active_tab = -1
+        if first_new_tab <= active_tab < self.tabs.count():
+            self.tabs.setCurrentIndex(active_tab)
 
     def on_favorite_toggled(self, session: dict, _new_state: bool):
         # The session dict is the same object the sidebar mutated, so we only

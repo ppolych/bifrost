@@ -106,6 +106,10 @@ class SettingsDialog(QDialog):
         self.confirm_quit_cb.setChecked(self.settings.get("confirm_quit_with_sessions", True))
         layout.addRow(self.confirm_quit_cb)
 
+        self.confirm_workspace_reconnect_cb = QCheckBox("Confirm before opening saved workspace sessions")
+        self.confirm_workspace_reconnect_cb.setChecked(self.settings.get("confirm_workspace_reconnect", True))
+        layout.addRow(self.confirm_workspace_reconnect_cb)
+
         import_moba_btn = QPushButton("Import MobaXterm sessions...")
         import_moba_btn.clicked.connect(self.import_mobaxterm_requested.emit)
         layout.addRow("Connections:", import_moba_btn)
@@ -494,6 +498,7 @@ class SettingsDialog(QDialog):
             "sftp_show_hidden": self.sftp_show_hidden_cb.isChecked(),
             "confirm_close_tab": self.confirm_close_tab_cb.isChecked(),
             "confirm_quit_with_sessions": self.confirm_quit_cb.isChecked(),
+            "confirm_workspace_reconnect": self.confirm_workspace_reconnect_cb.isChecked(),
 
             "font": self.current_font,
             "color_scheme": self.scheme_combo.currentText(),

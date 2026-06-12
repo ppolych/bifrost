@@ -179,6 +179,7 @@ def test_open_workspace_restores_cluster_membership(app, monkeypatch):
     monkeypatch.setattr(
         QInputDialog, "getItem", staticmethod(lambda *a, **k: ("w", True))
     )
+    app.settings["confirm_workspace_reconnect"] = False
 
     opened = []
 

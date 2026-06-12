@@ -77,6 +77,7 @@ def default_settings() -> dict:
         "sftp_show_hidden": False,      # show dotfiles in the SFTP browser
         "confirm_close_tab": True,
         "confirm_quit_with_sessions": True,
+        "confirm_workspace_reconnect": True,
 
         # Terminal appearance
         "font": default_monospace_font(10),
@@ -152,9 +153,9 @@ def load_settings() -> dict:
 def _sanitize_settings(settings: dict, defaults: dict) -> None:
     for key in (
         "show_dashboard", "auto_sftp", "sftp_show_hidden", "confirm_close_tab",
-        "confirm_quit_with_sessions", "cursor_blink", "bold_is_bright",
-        "right_click_paste", "copy_on_select", "confirm_multiline_paste",
-        "confirm_large_paste", "auto_log", "strip_newlines_on_paste",
+        "confirm_quit_with_sessions", "confirm_workspace_reconnect",
+        "cursor_blink", "bold_is_bright", "right_click_paste", "copy_on_select",
+        "confirm_multiline_paste", "confirm_large_paste", "auto_log", "strip_newlines_on_paste",
         "restore_window_geometry", "ssh_agent_forwarding", "ssh_tcp_keepalive",
     ):
         settings[key] = _coerce_bool(settings.get(key), defaults[key])

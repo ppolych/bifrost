@@ -10,6 +10,7 @@ from core.platform_utils import atomic_write_json, config_path, load_json
 log = logging.getLogger(__name__)
 
 WORKSPACES_FILE = "workspaces.json"
+WORKSPACE_SCHEMA_VERSION = 2
 SECRET_KEYS = {"password", "passphrase"}
 
 
@@ -31,19 +32,43 @@ class WorkspaceManager:
     def names(self) -> list[str]:
         return sorted(self.profiles.keys(), key=str.lower)
 
-    def upsert(self, name: str, sessions: list[dict]) -> None:
+    def upsert(self, name: str, sessions: list[dict], layout: dict | None = None) -> None:
         clean_name = (name or "").strip()
         if not clean_name:
             raise ValueError("Workspace name is required")
         cleaned = [_sanitize_session(s) for s in sessions if isinstance(s, dict)]
         if not cleaned:
             raise ValueError("Workspace has no SSH sessions to save")
-        self.profiles[clean_name] = cleaned
+        self.profiles[clean_name] = {
+            "version": WORKSPACE_SCHEMA_VERSION,
+            "sessions": cleaned,
+            "layout": _sanitize_layout(layout or {}),
+        }
         self.save()
 
     def get(self, name: str) -> list[dict]:
-        sessions = self.profiles.get(name) or []
+        sessions = self.get_profile(name).get("sessions", [])
         return [copy.deepcopy(s) for s in sessions if isinstance(s, dict)]
+
+    def get_profile(self, name: str) -> dict:
+        profile = self.profiles.get(name) or {}
+        if isinstance(profile, list):
+            sessions = profile
+            layout = {}
+            version = 1
+        elif isinstance(profile, dict):
+            sessions = profile.get("sessions") or []
+            layout = profile.get("layout") or {}
+            version = profile.get("version", WORKSPACE_SCHEMA_VERSION)
+        else:
+            sessions = []
+            layout = {}
+            version = 1
+        return {
+            "version": copy.deepcopy(version),
+            "sessions": [copy.deepcopy(s) for s in sessions if isinstance(s, dict)],
+            "layout": _sanitize_layout(layout if isinstance(layout, dict) else {}),
+        }
 
     def delete(self, name: str) -> bool:
         if name not in self.profiles:
@@ -61,4 +86,28 @@ def _sanitize_session(session: dict) -> dict:
         cleaned[key] = copy.deepcopy(value)
     cleaned.setdefault("type", "SSH")
     cleaned.setdefault("name", cleaned.get("host") or "SSH session")
+    return cleaned
+
+
+def _sanitize_layout(layout: dict) -> dict:
+    cleaned: dict = {}
+    for key in ("main_splitter_sizes", "sidebar_splitter_sizes"):
+        value = layout.get(key)
+        if isinstance(value, list) and len(value) == 2:
+            sizes = []
+            for item in value:
+                try:
+                    sizes.append(max(0, int(item)))
+                except (TypeError, ValueError):
+                    sizes = []
+                    break
+            if len(sizes) == 2:
+                cleaned[key] = sizes
+    for key in ("last_sidebar_tab", "active_tab"):
+        try:
+            value = int(layout.get(key))
+        except (TypeError, ValueError):
+            continue
+        if value >= 0:
+            cleaned[key] = value
     return cleaned

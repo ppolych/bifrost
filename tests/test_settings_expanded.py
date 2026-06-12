@@ -17,6 +17,7 @@ def test_default_settings_has_all_new_keys():
         "ssh_default_key_path",
         "confirm_multiline_paste", "confirm_large_paste", "large_paste_threshold",
         "credential_save_policy", "credential_provider",
+        "confirm_workspace_reconnect",
     }
     missing = expected - s.keys()
     assert not missing, f"missing: {missing}"
@@ -41,6 +42,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     dlg.editor_cmd_input.setText("code -n")
     dlg.text_editor_cmd_input.setText("notepad")
     dlg.restore_geom_cb.setChecked(False)
+    dlg.confirm_workspace_reconnect_cb.setChecked(False)
     # Mutate the picker-driven keys directly (the dialog stores them in
     # self.settings via callbacks; we simulate the picker result).
     dlg.settings["cursor_color"] = "#ff00ff"
@@ -62,6 +64,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     assert out["default_editor_command"] == "code -n"
     assert out["default_text_editor_command"] == "notepad"
     assert out["restore_window_geometry"] is False
+    assert out["confirm_workspace_reconnect"] is False
     assert out["cursor_color"] == "#ff00ff"
     assert out["selection_bg"] == "#222233"
     assert out["selection_fg"] == "#eeeeee"
