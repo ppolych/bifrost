@@ -132,6 +132,7 @@ class _TransferThread(QThread):
     progress = pyqtSignal(int, int)       # bytes_done, bytes_total
     finished_ok = pyqtSignal(str)
     failed = pyqtSignal(str)
+    cancelled = pyqtSignal(str)
 
     def __init__(self, sftp: paramiko.SFTPClient, mode: str, local_path: str, remote_path: str):
         super().__init__()
@@ -169,8 +170,11 @@ class _TransferThread(QThread):
                     self.sftp.get(self.remote_path, self.local_path, callback=self._callback)
                     self.finished_ok.emit(f"Downloaded {posixpath.basename(self.remote_path)}")
         except (EOFError, OSError, paramiko.SSHException) as e:
-            log.exception("SFTP transfer failed")
-            self.failed.emit(str(e) or e.__class__.__name__)
+            if self._cancelled:
+                self.cancelled.emit("Transfer cancelled")
+            else:
+                log.exception("SFTP transfer failed")
+                self.failed.emit(str(e) or e.__class__.__name__)
 
     def _callback(self, done: int, total: int):
         if self._cancelled:
@@ -269,6 +273,7 @@ class SftpBrowser(QWidget):
 
     def __init__(self):
         super().__init__()
+        self._ssh_client: Optional[paramiko.SSHClient] = None
         self.sftp: Optional[paramiko.SFTPClient] = None
         self.cwd: str = "/"
         self._transfer: Optional[_TransferThread] = None
@@ -375,6 +380,8 @@ class SftpBrowser(QWidget):
         self._transfer_name: str = ""
         self._active_transfer_row: QTreeWidgetItem | None = None
         self._last_transfer_failed = False
+        self._last_transfer_cancelled = False
+        self._detaching = False
 
         self.transfer_queue = QTreeWidget()
         self.transfer_queue.setHeaderLabels(["Status", "Operation", "Item"])
@@ -393,6 +400,7 @@ class SftpBrowser(QWidget):
     def attach(self, ssh_client: paramiko.SSHClient) -> None:
         """Open an SFTP channel on the given SSHClient and populate the browser."""
         self.detach()
+        self._ssh_client = ssh_client
         try:
             self.sftp = ssh_client.open_sftp()
         except (OSError, paramiko.SSHException) as e:
@@ -408,7 +416,9 @@ class SftpBrowser(QWidget):
         self._refresh()
 
     def detach(self) -> None:
+        self._detaching = True
         self._stop_transfer(wait=True)
+        self._ssh_client = None
         if self.sftp is not None:
             try:
                 self.sftp.close()
@@ -423,6 +433,7 @@ class SftpBrowser(QWidget):
         self.transfer_queue.clear()
         self.transfer_queue.hide()
         self._set_buttons_enabled(False)
+        self._detaching = False
 
     def is_attached(self) -> bool:
         return self.sftp is not None
@@ -909,8 +920,9 @@ class SftpBrowser(QWidget):
         t.progress.connect(self._on_transfer_progress)
         t.finished_ok.connect(self._on_transfer_done)
         t.failed.connect(self._on_transfer_failed)
-        t.finished.connect(lambda: self._cleanup_transfer())
+        t.cancelled.connect(self._on_transfer_cancelled)
         self._transfer = t
+        t.finished.connect(lambda _transfer=t: self._cleanup_transfer(_transfer))
         self.cancel_btn.setEnabled(True)
         t.start()
 
@@ -918,6 +930,15 @@ class SftpBrowser(QWidget):
         if self._transfer is not None:
             self._transfer.cancel()
             self.cancel_btn.setEnabled(False)
+            self.transfer_status.setText("Cancelling transfer...")
+            self._last_transfer_cancelled = True
+            self._mark_transfer_finished("Canceled")
+            if self.sftp is not None:
+                try:
+                    self.sftp.close()
+                except Exception:
+                    log.debug("sftp close during transfer cancel failed", exc_info=True)
+                self.sftp = None
 
     def _stop_transfer(self, wait: bool = False) -> None:
         transfer = self._transfer
@@ -988,10 +1009,23 @@ class SftpBrowser(QWidget):
         self._mark_transfer_finished("Failed")
         QMessageBox.warning(self, "SFTP transfer failed", message)
 
-    def _cleanup_transfer(self) -> None:
+    def _on_transfer_cancelled(self, message: str) -> None:
+        self._last_transfer_cancelled = True
+        self.transfer_status.setText(message)
+        self.transfer_panel.show()
+        self._mark_transfer_finished("Canceled")
+
+    def _cleanup_transfer(self, transfer: _TransferThread | None = None) -> None:
+        if transfer is not None and transfer is not self._transfer:
+            return
         self._set_buttons_enabled(True)
         self._transfer = None
         self._reset_transfer_progress()
+        if self._last_transfer_cancelled:
+            self._last_transfer_cancelled = False
+            if not self._detaching:
+                self._reopen_sftp_after_cancel()
+            return
         if self._last_transfer_failed:
             self._last_transfer_failed = False
             return
@@ -1005,6 +1039,21 @@ class SftpBrowser(QWidget):
             local, remote = self._upload_queue.pop(0)
             self._remove_queued_transfer(local, remote)
             self._start_transfer("upload", local, remote)
+
+    def _reopen_sftp_after_cancel(self) -> None:
+        if self._ssh_client is None:
+            self._set_buttons_enabled(False)
+            return
+        try:
+            self.sftp = self._ssh_client.open_sftp()
+        except (OSError, paramiko.SSHException) as e:
+            log.warning("failed to reopen SFTP after transfer cancel: %s", e)
+            self.sftp = None
+            self.path_label.setText(f"SFTP unavailable after cancel: {e}")
+            self._set_buttons_enabled(False)
+            return
+        self._set_buttons_enabled(True)
+        self._refresh()
 
     def closeEvent(self, event) -> None:
         self._stop_transfer(wait=True)

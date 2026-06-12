@@ -451,6 +451,68 @@ def test_cancel_transfer_marks_thread_cancelled(browser):
     assert not browser.cancel_btn.isEnabled()
 
 
+def test_cancel_transfer_closes_sftp_to_unblock_download(browser):
+    thread = MagicMock()
+    sftp = MagicMock()
+    browser._transfer = thread
+    browser.sftp = sftp
+
+    browser._cancel_transfer()
+
+    assert browser.sftp is None
+    sftp.close.assert_called_once()
+    thread.cancel.assert_called_once()
+
+
+def test_cancelled_cleanup_reopens_sftp_and_does_not_chain_queue(browser, monkeypatch):
+    old_sftp = MagicMock()
+    new_sftp = MagicMock()
+    ssh_client = MagicMock()
+    ssh_client.open_sftp.return_value = new_sftp
+    browser._ssh_client = ssh_client
+    browser.sftp = old_sftp
+    browser._transfer = MagicMock()
+    browser._last_transfer_cancelled = True
+    browser._download_queue = [("/tmp/a", "/remote/a")]
+    browser._upload_queue = [("/tmp/b", "/remote/b")]
+    started = []
+    monkeypatch.setattr(browser, "_start_transfer", lambda *args: started.append(args))
+    monkeypatch.setattr(browser, "_refresh", lambda: None)
+
+    browser._cleanup_transfer()
+
+    assert browser.sftp is new_sftp
+    assert started == []
+    assert browser._download_queue == [("/tmp/a", "/remote/a")]
+    assert browser._upload_queue == [("/tmp/b", "/remote/b")]
+
+
+def test_stale_transfer_cleanup_does_not_clear_current_transfer(browser, monkeypatch):
+    old_thread = MagicMock()
+    current_thread = MagicMock()
+    browser._transfer = current_thread
+    browser._last_transfer_cancelled = True
+    monkeypatch.setattr(browser, "_reopen_sftp_after_cancel", lambda: None)
+
+    browser._cleanup_transfer(old_thread)
+
+    assert browser._transfer is current_thread
+    assert browser._last_transfer_cancelled is True
+
+
+def test_detach_does_not_reopen_sftp_after_cancel_cleanup(browser, monkeypatch):
+    browser._detaching = True
+    browser._transfer = MagicMock()
+    browser._last_transfer_cancelled = True
+    reopened = []
+    monkeypatch.setattr(browser, "_reopen_sftp_after_cancel", lambda: reopened.append(True))
+
+    browser._cleanup_transfer(browser._transfer)
+
+    assert reopened == []
+    assert browser._transfer is None
+
+
 def test_upload_conflict_skip_apply_all(browser, monkeypatch):
     browser.sftp = MagicMock()
     browser.sftp.stat.return_value = object()
