@@ -137,6 +137,50 @@ def test_load_settings_sanitizes_bad_numeric_and_bool_values(qapp, tmp_path, mon
     SettingsDialog(current_settings=loaded)
 
 
+def test_load_settings_sanitizes_bad_application_theme(qapp, tmp_path, monkeypatch):
+    import json
+
+    import core.settings_store as ss
+
+    monkeypatch.setattr(ss, "config_path", lambda name: str(tmp_path / name))
+    (tmp_path / "settings.json").write_text(json.dumps({
+        "theme": "Missing Theme",
+    }), encoding="utf-8")
+
+    loaded = ss.load_settings()
+
+    assert loaded["theme"] == "Dark (MobaXterm style)"
+
+
+def test_application_theme_stylesheets_are_distinct():
+    from core.styles import THEME_NAMES, get_theme_stylesheet
+
+    styles = {name: get_theme_stylesheet(name) for name in THEME_NAMES}
+
+    assert len(set(styles.values())) == len(THEME_NAMES)
+    assert "#f4f4f4" in styles["Light"]
+    assert "#eee8d5" in styles["Solarized"]
+    assert "2px solid #ffffff" in styles["High Contrast"]
+
+
+def test_apply_global_visuals_applies_application_theme(qapp):
+    from PyQt6.QtWidgets import QMainWindow
+
+    from bifrost_app import BifrostApp
+    from core.settings_store import default_settings
+
+    app = BifrostApp.__new__(BifrostApp)
+    QMainWindow.__init__(app)
+    app.settings = default_settings()
+    app.settings["theme"] = "Light"
+    app.settings["opacity"] = 85
+
+    BifrostApp.apply_global_visuals(app)
+
+    assert "#f4f4f4" in app.styleSheet()
+    assert app.windowOpacity() == pytest.approx(0.85, abs=0.01)
+
+
 def test_credentials_flow_through_to_ssh_credentials():
     """The settings keys map cleanly into the SshCredentials a backend uses."""
     from core.ssh_backend import SshCredentials

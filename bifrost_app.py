@@ -33,7 +33,7 @@ from widgets.settings_dialog import SettingsDialog
 from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
 from widgets.remote_monitor import RemoteMonitorWidget
-from core.styles import get_dark_theme
+from core.styles import get_theme_stylesheet
 from core.color_schemes import DEFAULT_NAME, SCHEMES, apply_scheme
 from core import credentials, session_crypto, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
@@ -108,7 +108,6 @@ class BifrostApp(QMainWindow):
         self.macro_engine = MacroEngine()
         self.snippet_manager = SnippetManager()
         self.host_key_prompter = HostKeyPrompter(self)
-        self.setStyleSheet(get_dark_theme())
         self.detached_windows = []
         self.pinned_tabs = set()
         # Cluster = the subset of tabs MultiExec targets when scoped to
@@ -462,6 +461,7 @@ class BifrostApp(QMainWindow):
 
     def apply_global_visuals(self):
         self.setWindowOpacity(self.settings["opacity"] / 100.0)
+        self.setStyleSheet(get_theme_stylesheet(self.settings.get("theme")))
         if hasattr(self, "tabs"):
             pos = self._TAB_POSITION_MAP.get(
                 self.settings.get("tab_position", "Top"),

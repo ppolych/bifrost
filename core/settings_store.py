@@ -9,6 +9,7 @@ import logging
 from PyQt6.QtGui import QFont
 
 from core.platform_utils import atomic_write_json, config_path, default_monospace_font, load_json
+from core.styles import DEFAULT_THEME, THEME_NAMES
 
 log = logging.getLogger(__name__)
 
@@ -181,6 +182,8 @@ def _sanitize_settings(settings: dict, defaults: dict) -> None:
         settings.get("sidebar_splitter_sizes"),
         defaults["sidebar_splitter_sizes"],
     )
+    if settings.get("theme") not in THEME_NAMES:
+        settings["theme"] = DEFAULT_THEME
 
 
 def save_settings(settings: dict) -> None:

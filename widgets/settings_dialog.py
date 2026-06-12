@@ -34,13 +34,14 @@ from PyQt6.QtWidgets import (
 
 from core.color_schemes import apply_scheme, scheme_for, scheme_names
 from core.platform_utils import default_monospace_font
+from core.styles import THEME_NAMES
 
 
 CURSOR_SHAPES = [("Block", "block"), ("Underline", "underline"), ("Bar", "bar")]
 BELL_MODES = [("Off", "off"), ("Beep", "beep"), ("Visual flash", "visual")]
 TAB_POSITIONS = ["Top", "Bottom", "Left", "Right"]
 ENCODINGS = ["UTF-8", "ISO-8859-1", "ASCII", "UTF-16"]
-THEMES = ["Dark (MobaXterm style)", "Light", "Solarized", "High Contrast"]
+THEMES = THEME_NAMES
 SSH_AUTH_MODES = [("SSH agent", "agent"), ("Private key", "key"), ("Password", "password")]
 CREDENTIAL_POLICIES = [("Ask each time", "ask"), ("Never save", "never")]
 CREDENTIAL_PROVIDERS = [
