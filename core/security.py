@@ -16,9 +16,10 @@ SECRET_KEYS = {
 }
 
 _SECRET_PATTERNS = [
-    re.compile(r"(password\s*[=:]\s*)(\S+)", re.IGNORECASE),
-    re.compile(r"(passphrase\s*[=:]\s*)(\S+)", re.IGNORECASE),
-    re.compile(r"(token\s*[=:]\s*)(\S+)", re.IGNORECASE),
+    re.compile(
+        rf"((?:{'|'.join(sorted(SECRET_KEYS))})\s*[=:]\s*)(\S+)",
+        re.IGNORECASE,
+    ),
 ]
 
 

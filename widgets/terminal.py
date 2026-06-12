@@ -259,6 +259,12 @@ class TerminalWidget(
                 backend.close()
             except Exception:
                 log.exception("backend close failed")
+        if self.log_file is not None:
+            try:
+                self.log_file.close()
+            except OSError:
+                pass
+            self.log_file = None
 
     def _toggle_cursor(self):
         self._cursor_visible = not self._cursor_visible
@@ -291,10 +297,4 @@ class TerminalWidget(
 
     def closeEvent(self, event):
         self.shutdown()
-        if self.log_file is not None:
-            try:
-                self.log_file.close()
-            except OSError:
-                pass
-            self.log_file = None
         super().closeEvent(event)

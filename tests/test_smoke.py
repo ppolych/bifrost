@@ -276,5 +276,7 @@ def test_terminal_logs_use_safe_session_name(qapp, tmp_path):
     assert duplicate_log_file is not None
     assert duplicate_log_file.name != log_file.name
 
-    duplicate.close()
-    container.close()
+    duplicate.shutdown()
+    assert duplicate_log_file.closed
+    container.shutdown()
+    assert log_file.closed

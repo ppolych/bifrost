@@ -40,6 +40,26 @@ def test_redacting_formatter_masks_secret_values():
     assert formatter.format(record) == "password=<redacted> port=22"
 
 
+def test_redacting_formatter_masks_all_secret_key_names():
+    from core.logging_setup import RedactingFormatter
+
+    record = logging.LogRecord(
+        "test",
+        logging.INFO,
+        __file__,
+        1,
+        "api_key=abc private_key:def secret=xyz token=t",
+        (),
+        None,
+    )
+    formatter = RedactingFormatter("%(message)s")
+
+    assert formatter.format(record) == (
+        "api_key=<redacted> private_key:<redacted> "
+        "secret=<redacted> token=<redacted>"
+    )
+
+
 def test_diagnostic_text_redacts_secrets_and_home(monkeypatch):
     from core.diagnostics import diagnostic_text
 
