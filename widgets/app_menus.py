@@ -53,6 +53,9 @@ def setup_app_menus(window) -> None:
     wol_act = QAction("Wake on LAN...", window)
     wol_act.triggered.connect(window.on_wol_dialog)
     connections_menu.addAction(wol_act)
+    saved_credentials = QAction("Saved credentials...", window)
+    saved_credentials.triggered.connect(window.open_saved_credentials_dialog)
+    connections_menu.addAction(saved_credentials)
     forget_act = QAction("Forget credentials for current session", window)
     forget_act.triggered.connect(window.forget_current_session_credentials)
     connections_menu.addAction(forget_act)
@@ -63,13 +66,12 @@ def setup_app_menus(window) -> None:
     view_menu.addAction(sidebar_act)
     for label, index in (
         ("Sessions", 0),
-        ("Credentials", 1),
-        ("Active SSH", 2),
-        ("Local servers", 3),
-        ("Tools", 4),
-        ("Macros", 5),
-        ("Snippets", 6),
-        ("Docker", 7),
+        ("Active SSH", 1),
+        ("Local servers", 2),
+        ("Tools", 3),
+        ("Macros", 4),
+        ("Snippets", 5),
+        ("Docker", 6),
     ):
         act = QAction(label, window)
         act.triggered.connect(lambda _checked=False, i=index: window.sidebar.tabs.setCurrentIndex(i))

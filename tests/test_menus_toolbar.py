@@ -28,6 +28,12 @@ def test_app_menubar_has_desktop_sections(qapp, tmp_path, monkeypatch):
     titles = [action.text() for action in app.menuBar().actions()]
 
     assert titles == ["Session", "Connections", "View", "Tools", "Workspaces", "Help"]
+    connections_menu = app.menuBar().actions()[1].menu()
+    connection_actions = [action.text() for action in connections_menu.actions() if action.text()]
+    assert "Saved credentials..." in connection_actions
+    view_menu = app.menuBar().actions()[2].menu()
+    view_actions = [action.text() for action in view_menu.actions() if action.text()]
+    assert "Credentials" not in view_actions
     help_menu = app.menuBar().actions()[-1].menu()
     help_actions = [action.text() for action in help_menu.actions() if action.text()]
     assert help_actions[-1] == "About Bifrost"

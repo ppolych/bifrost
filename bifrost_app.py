@@ -18,7 +18,7 @@ import pyte
 from PyQt6.QtCore import QT_VERSION_STR, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QColorDialog, QComboBox, QFileDialog, QHBoxLayout,
+    QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog, QHBoxLayout,
     QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QSplitter,
     QStatusBar, QTabBar, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -31,6 +31,7 @@ from widgets.toolbar import MainToolBar
 from widgets.session_dialog import SessionDialog
 from widgets.settings_dialog import SettingsDialog
 from widgets.command_palette import CommandPalette, PaletteEntry
+from widgets.credential_manager import CredentialManager
 from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
 from widgets.remote_monitor import RemoteMonitorWidget
@@ -138,7 +139,7 @@ class BifrostApp(QMainWindow):
         self.toolbar.multi_exec_toggled.connect(self.on_multi_exec_toggled)
         self.toolbar.session_act.triggered.connect(self.open_session_dialog)
         self.toolbar.servers_act.triggered.connect(
-            lambda: self.sidebar.tabs.setCurrentIndex(3)  # Servers tab
+            lambda: self.sidebar.tabs.setCurrentIndex(2)  # Servers tab
         )
         self.toolbar.quick_connect_triggered.connect(self.on_quick_connect)
         self.toolbar.wol_act.triggered.connect(self.on_wol_dialog)
@@ -174,8 +175,6 @@ class BifrostApp(QMainWindow):
         self.sidebar.ssh_browser.reconnect_tab.connect(self._reconnect_tab)
         self.sidebar.ssh_browser.reconnect_all.connect(self._reconnect_all_disconnected)
         self.sidebar.ssh_browser.stop_tunnel.connect(self._stop_ssh_tunnel)
-        self.sidebar.cred_widget.refresh_requested.connect(self._refresh_credentials_view)
-        self.sidebar.cred_widget.forget_requested.connect(self.on_forget_credentials)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
         self.sidebar.sftp_widget.file_text_editor_requested.connect(self.open_file_in_text_editor)
         self.sidebar.sftp_widget.file_open_with_requested.connect(self.open_file_with_command)
@@ -454,7 +453,10 @@ class BifrostApp(QMainWindow):
             ):
                 self.sidebar.content_splitter.setSizes(sidebar_sizes)
             try:
-                self.sidebar.tabs.setCurrentIndex(int(self.settings.get("last_sidebar_tab", 0) or 0))
+                idx = int(self.settings.get("last_sidebar_tab", 0) or 0)
+                if idx < 0 or idx >= self.sidebar.tabs.count():
+                    idx = 0
+                self.sidebar.tabs.setCurrentIndex(idx)
             except (TypeError, ValueError):
                 self.sidebar.tabs.setCurrentIndex(0)
 
@@ -503,6 +505,30 @@ class BifrostApp(QMainWindow):
                         term.apply_settings()
             self.status_bar.showMessage("Settings applied.")
 
+    def open_saved_credentials_dialog(self):
+        existing = getattr(self, "_credentials_dialog", None)
+        if existing is not None:
+            existing.raise_()
+            existing.activateWindow()
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Saved credentials")
+        dialog.resize(760, 420)
+        layout = QVBoxLayout(dialog)
+        view = CredentialManager(dialog)
+        view.refresh_requested.connect(self._refresh_credentials_view)
+        view.forget_requested.connect(self.on_forget_credentials)
+        layout.addWidget(view)
+        self._credentials_dialog = dialog
+        self._credentials_view = view
+        dialog.finished.connect(lambda _result: self._clear_credentials_dialog_refs())
+        self._refresh_credentials_view()
+        dialog.show()
+
+    def _clear_credentials_dialog_refs(self):
+        self._credentials_dialog = None
+        self._credentials_view = None
+
     def open_command_palette(self):
         dialog = CommandPalette(self._command_palette_entries(), self)
         dialog.exec()
@@ -515,6 +541,7 @@ class BifrostApp(QMainWindow):
             PaletteEntry("Connections: Reconnect current tab", self.reconnect_current_tab),
             PaletteEntry("Connections: Reconnect all disconnected", self._reconnect_all_disconnected),
             PaletteEntry("Connections: Open SFTP here", self.attach_sftp_for_current_tab),
+            PaletteEntry("Connections: Saved credentials...", self.open_saved_credentials_dialog),
             PaletteEntry("View: Toggle sidebar", self.sidebar.toggle_collapse),
             PaletteEntry("View: Toggle SFTP pane", self.toggle_sftp_pane),
             PaletteEntry("Tools: Settings...", self.open_settings_dialog),
@@ -668,9 +695,9 @@ class BifrostApp(QMainWindow):
         dashboard.session_requested.connect(self._dashboard_session_requested)
         dashboard.btn_ssh.clicked.connect(lambda: self.new_terminal_tab("Local Shell"))
         dashboard.btn_session.clicked.connect(self.open_session_dialog)
-        # Sidebar tabs after the SFTP-pane refactor: 0 Sessions, 1 Credentials,
-        # 2 SSH, 3 Servers, 4 Tools, 5 Macros.
-        dashboard.btn_tools.clicked.connect(lambda: self.sidebar.tabs.setCurrentIndex(4))
+        # Sidebar tabs after moving credentials to the menu:
+        # 0 Sessions, 1 SSH, 2 Servers, 3 Tools, 4 Macros.
+        dashboard.btn_tools.clicked.connect(lambda: self.sidebar.tabs.setCurrentIndex(3))
         self.tabs.addTab(dashboard, "🏠 Home")
         self.tabs.setCurrentIndex(self.tabs.count()-1)
 
@@ -1672,7 +1699,7 @@ class BifrostApp(QMainWindow):
             self.sidebar.hide_sftp_pane()
 
         if "Servers" in name:
-            self.sidebar.tabs.setCurrentIndex(3)  # Servers tab (was 4 before SFTP moved out)
+            self.sidebar.tabs.setCurrentIndex(2)
 
     def _refresh_ssh_browser(self):
         from widgets.ssh_browser import ActiveConnection
@@ -1724,6 +1751,9 @@ class BifrostApp(QMainWindow):
 
     def _refresh_credentials_view(self):
         """Walk the saved sessions tree and let the keyring view check what's stored."""
+        view = getattr(self, "_credentials_view", None)
+        if view is None:
+            return
         sessions: list[dict] = []
         def walk(node):
             if isinstance(node, dict):
@@ -1734,7 +1764,7 @@ class BifrostApp(QMainWindow):
                     if isinstance(item, dict):
                         sessions.append(item)
         walk(self.session_manager.sessions)
-        self.sidebar.cred_widget.set_sessions(sessions)
+        view.set_sessions(sessions)
 
     def _disconnect_tab(self, tab_index: int):
         if tab_index < 0 or tab_index >= self.tabs.count():

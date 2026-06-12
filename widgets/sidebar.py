@@ -33,7 +33,6 @@ def _session_tooltip(session: dict) -> str:
     if session.get("favorite"):
         lines.append("⭐ Favorite")
     return "<br>".join(lines) if lines else name
-from widgets.credential_manager import CredentialManager
 from widgets.local_servers import LocalServersManager
 from widgets.sftp_browser import SftpBrowser
 from widgets.ssh_browser import SshBrowser
@@ -151,22 +150,17 @@ class Sidebar(QWidget):
         self.tabs.addTab(self.session_widget, named_icon("list_alt.svg"), "")
         self.tabs.setTabToolTip(0, "Sessions")
 
-        # 2. Credentials Tab
-        self.cred_widget = CredentialManager()
-        self.tabs.addTab(self.cred_widget, named_icon("key.svg"), "")
-        self.tabs.setTabToolTip(1, "Saved passwords / passphrases")
-
-        # 3. SSH Browser Tab
+        # 2. SSH Browser Tab
         self.ssh_browser = SshBrowser()
         self.tabs.addTab(self.ssh_browser, named_icon("dns.svg"), "")
-        self.tabs.setTabToolTip(2, "Active SSH sessions")
+        self.tabs.setTabToolTip(1, "Active SSH sessions")
 
-        # 4. Servers Tab
+        # 3. Servers Tab
         self.servers_widget = LocalServersManager()
         self.tabs.addTab(self.servers_widget, named_icon("hub.svg"), "")
-        self.tabs.setTabToolTip(3, "Local servers")
+        self.tabs.setTabToolTip(2, "Local servers")
 
-        # 5. Tools Tab
+        # 4. Tools Tab
         self.tools_widget = QWidget()
         self.tools_widget.setMinimumWidth(0)
         self.tools_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -182,9 +176,9 @@ class Sidebar(QWidget):
             self.tools_layout.addWidget(btn)
         self.tools_layout.addStretch()
         self.tabs.addTab(self.tools_widget, named_icon("build.svg"), "")
-        self.tabs.setTabToolTip(4, "Tools")
+        self.tabs.setTabToolTip(3, "Tools")
 
-        # 6. Macros Tab
+        # 5. Macros Tab
         self.macro_widget = QWidget()
         self.macro_widget.setMinimumWidth(0)
         self.macro_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -200,19 +194,19 @@ class Sidebar(QWidget):
         self.record_btn.setProperty("compact", True)
         self.macro_layout.addWidget(self.record_btn)
         self.tabs.addTab(self.macro_widget, named_icon("code.svg"), "")
-        self.tabs.setTabToolTip(5, "Macros")
+        self.tabs.setTabToolTip(4, "Macros")
 
-        # 7. Snippets Tab
+        # 6. Snippets Tab
         self.snippet_widget = SnippetWidget(self.snippet_manager)
         self.snippet_widget.snippet_triggered.connect(self.snippet_triggered.emit)
         self.tabs.addTab(self.snippet_widget, named_icon("list_alt.svg"), "")
-        self.tabs.setTabToolTip(6, "Command Snippets")
+        self.tabs.setTabToolTip(5, "Command Snippets")
 
-        # 8. Docker Tab
+        # 7. Docker Tab
         self.docker_widget = DockerDashboard()
         self.docker_widget.container_shell_requested.connect(self.container_shell_requested.emit)
         self.tabs.addTab(self.docker_widget, named_icon("desktop_windows.svg"), "")
-        self.tabs.setTabToolTip(7, "Docker Containers")
+        self.tabs.setTabToolTip(6, "Docker Containers")
 
         # SFTP browser — sibling of the tab widget, persistent.
         self.sftp_widget = SftpBrowser()

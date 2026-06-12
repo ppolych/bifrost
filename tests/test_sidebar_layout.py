@@ -34,14 +34,15 @@ def test_tab_indexes_match_documented_order(sidebar):
     # Tabs are icon-only now; identity lives in the tooltip.
     tooltips = [sidebar.tabs.tabToolTip(i) for i in range(sidebar.tabs.count())]
     # Order matters — BifrostApp.show_dashboard and on_tab_changed reference these.
+    assert len(tooltips) == 7
     assert "Sessions" in tooltips[0]
-    assert "passwords" in tooltips[1].lower() or "credentials" in tooltips[1].lower()
-    assert "SSH" in tooltips[2]
-    assert "servers" in tooltips[3].lower()
-    assert "Tools" in tooltips[4]
-    assert "Macros" in tooltips[5]
-    assert "Snippets" in tooltips[6]
-    assert "Docker" in tooltips[7]
+    assert "SSH" in tooltips[1]
+    assert "servers" in tooltips[2].lower()
+    assert "Tools" in tooltips[3]
+    assert "Macros" in tooltips[4]
+    assert "Snippets" in tooltips[5]
+    assert "Docker" in tooltips[6]
+    assert not any("credential" in tooltip.lower() or "password" in tooltip.lower() for tooltip in tooltips)
 
 
 def test_sftp_widget_is_in_the_splitter(sidebar):
