@@ -6,13 +6,7 @@ from PyQt6.QtWidgets import (
 
 from core import wsl
 from core.color_schemes import scheme_names
-
-
-TMUX_COMMANDS = {
-    "Attach or create": "tmux new-session -A -s main",
-    "Attach existing": "tmux attach-session",
-    "New named session": "tmux new-session -s main",
-}
+from widgets.tmux_commands import TMUX_PRESETS
 
 
 def build_session_dialog_ui(dialog) -> None:
@@ -53,8 +47,8 @@ def build_connection_tab(dialog) -> None:
     command_row.addWidget(dialog.command_input, 1)
     dialog.tmux_preset = QComboBox()
     dialog.tmux_preset.addItem("tmux preset...", "")
-    for label, command in TMUX_COMMANDS.items():
-        dialog.tmux_preset.addItem(label, command)
+    for label, preset in TMUX_PRESETS.items():
+        dialog.tmux_preset.addItem(label, preset)
     dialog.tmux_preset.currentIndexChanged.connect(dialog._apply_tmux_preset)
     command_row.addWidget(dialog.tmux_preset)
     dialog.ssh_layout.addRow("Startup command:", command_row)

@@ -40,12 +40,25 @@ def test_session_dialog_tmux_preset_sets_startup_command(qapp):
     from widgets.session_dialog import SessionDialog
 
     dlg = SessionDialog()
+    dlg.name_input.setText("prod api")
     idx = dlg.tmux_preset.findText("Attach or create")
 
     dlg.tmux_preset.setCurrentIndex(idx)
 
-    assert dlg.command_input.text() == "tmux new-session -A -s main"
+    assert dlg.command_input.text() == "tmux new-session -A -s prod_api"
     assert dlg.tmux_preset.currentIndex() == 0
+
+
+def test_session_dialog_tmux_preset_falls_back_to_host(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog()
+    dlg.host_input.setText("prod.example.com")
+    idx = dlg.tmux_preset.findText("Attach existing")
+
+    dlg.tmux_preset.setCurrentIndex(idx)
+
+    assert dlg.command_input.text() == "tmux attach-session -t prod.example.com"
 
 
 def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):

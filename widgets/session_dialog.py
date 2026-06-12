@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QDialog, QFileDialog
 
 from widgets.session_dialog_ui import build_session_dialog_ui
+from widgets.tmux_commands import tmux_command
 
 
 class SessionDialog(QDialog):
@@ -55,9 +56,11 @@ class SessionDialog(QDialog):
         self.password_note.setVisible(is_pwd)
 
     def _apply_tmux_preset(self, _index: int):
-        command = self.tmux_preset.currentData()
-        if command:
-            self.command_input.setText(command)
+        preset = self.tmux_preset.currentData()
+        if preset:
+            self.command_input.setText(
+                tmux_command(preset, self.name_input.text(), self.host_input.text())
+            )
             self.tmux_preset.setCurrentIndex(0)
 
     def _auth_value(self) -> str:

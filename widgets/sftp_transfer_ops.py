@@ -96,6 +96,7 @@ class SftpTransferOpsMixin:
             self.transfer_status.setText("Cancelling transfer...")
             self._last_transfer_cancelled = True
             self._mark_transfer_finished("Canceled")
+            self._clear_pending_transfers()
             if self.sftp is not None:
                 try:
                     self.sftp.close()

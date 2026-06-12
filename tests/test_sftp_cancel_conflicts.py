@@ -75,26 +75,29 @@ def test_cancel_transfer_closes_sftp_to_unblock_download(browser):
     thread.cancel.assert_called_once()
 
 
-def test_cancelled_cleanup_reopens_sftp_and_does_not_chain_queue(browser, monkeypatch):
+def test_cancel_transfer_clears_pending_queue(browser, monkeypatch):
     new_sftp = MagicMock()
     ssh_client = MagicMock()
     ssh_client.open_sftp.return_value = new_sftp
     browser._ssh_client = ssh_client
     browser.sftp = MagicMock()
     browser._transfer = MagicMock()
-    browser._last_transfer_cancelled = True
     browser._download_queue = [("/tmp/a", "/remote/a")]
     browser._upload_queue = [("/tmp/b", "/remote/b")]
+    browser._add_queued_transfer("download", "/tmp/a", "/remote/a")
+    browser._add_queued_transfer("upload", "/tmp/b", "/remote/b")
     started = []
     monkeypatch.setattr(browser, "_start_transfer", lambda *args: started.append(args))
     monkeypatch.setattr(browser, "_refresh", lambda: None)
 
+    browser._cancel_transfer()
     browser._cleanup_transfer()
 
     assert browser.sftp is new_sftp
     assert started == []
-    assert browser._download_queue == [("/tmp/a", "/remote/a")]
-    assert browser._upload_queue == [("/tmp/b", "/remote/b")]
+    assert browser._download_queue == []
+    assert browser._upload_queue == []
+    assert browser.transfer_queue.topLevelItemCount() == 0
 
 
 def test_stale_transfer_cleanup_does_not_clear_current_transfer(browser, monkeypatch):

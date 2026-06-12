@@ -11,6 +11,40 @@ def test_snippet_manager_update_moves_snippet(tmp_path, monkeypatch):
     assert manager.get_snippet("SSH", "Uptime") == "uptime"
 
 
+def test_default_snippets_include_devops_groups(tmp_path, monkeypatch):
+    import core.snippets as snippets
+
+    monkeypatch.setattr(snippets, "config_path", lambda name: str(tmp_path / name))
+
+    manager = snippets.SnippetManager()
+
+    assert manager.get_snippet("SSH", "Tmux Attach") == "tmux new-session -A -s {name}"
+    assert manager.get_snippet("Kubernetes", "Pods") == "kubectl get pods -A"
+
+
+def test_snippet_variables_expand_session_context():
+    from core.snippet_variables import expand_snippet
+
+    session = {
+        "name": "prod",
+        "type": "SSH",
+        "host": "prod.example.com",
+        "user": "ops",
+        "port": "2222",
+    }
+
+    assert expand_snippet("{name} {type} {user}@{host}:{port}", session) == (
+        "prod SSH ops@prod.example.com:2222"
+    )
+
+
+def test_snippet_variables_preserve_unknown_or_invalid_placeholders():
+    from core.snippet_variables import expand_snippet
+
+    assert expand_snippet("echo {missing}", {}) == "echo {missing}"
+    assert expand_snippet("echo {", {}) == "echo {"
+
+
 def test_docker_action_rejects_unknown_action():
     import pytest
 

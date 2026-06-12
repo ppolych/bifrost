@@ -77,3 +77,27 @@ def test_command_palette_includes_saved_sessions(qapp, tmp_path, monkeypatch):
     labels = [entry.label for entry in app._command_palette_entries()]
 
     assert "Open session: prod (User sessions/prod)" in labels
+
+
+def test_command_palette_includes_snippets(qapp, tmp_path, monkeypatch):
+    import core.macro_engine as macro_engine
+    import core.persistence as persistence
+    import core.settings_store as settings_store
+    import core.snippets as snippets
+    import core.workspaces as workspaces
+
+    monkeypatch.setattr(persistence, "config_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(settings_store, "config_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(snippets, "config_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(workspaces, "config_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(macro_engine, "config_path", lambda name: str(tmp_path / name))
+
+    from bifrost_app import BifrostApp
+
+    app = BifrostApp(settings=settings_store.default_settings())
+    app.snippet_manager.snippets = {"SSH": {"Tmux Attach": "tmux new-session -A -s {name}"}}
+
+    labels = [entry.label for entry in app._command_palette_entries()]
+
+    assert "Snippet: Insert SSH/Tmux Attach" in labels
+    assert "Snippet: Run SSH/Tmux Attach" in labels

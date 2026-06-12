@@ -1,4 +1,5 @@
 from bifrost_app_deps import *
+from core.snippet_variables import expand_snippet
 
 
 class BifrostSettingsToolsMixin:
@@ -72,6 +73,21 @@ class BifrostSettingsToolsMixin:
                     lambda s=session: self.on_session_activated(s),
                 )
             )
+        for group, items in sorted(self.snippet_manager.snippets.items()):
+            for name, command in sorted(items.items()):
+                label = f"{group}/{name}"
+                entries.append(
+                    PaletteEntry(
+                        f"Snippet: Insert {label}",
+                        lambda text=command: self.run_snippet(text, execute=False),
+                    )
+                )
+                entries.append(
+                    PaletteEntry(
+                        f"Snippet: Run {label}",
+                        lambda text=command: self.run_snippet(text, execute=True),
+                    )
+                )
         return entries
 
     def show_diagnostics(self):
@@ -264,18 +280,4 @@ class BifrostSettingsToolsMixin:
     def _expand_snippet(self, text: str) -> str:
         current_tab = self.tabs.currentWidget()
         session = current_tab.ssh_session if isinstance(current_tab, TerminalContainer) else None
-        values = {
-            "host": "",
-            "user": "",
-            "port": "",
-        }
-        if isinstance(session, dict):
-            values.update({
-                "host": str(session.get("host") or ""),
-                "user": str(session.get("user") or ""),
-                "port": str(session.get("port") or ""),
-            })
-        try:
-            return text.format(**values)
-        except (KeyError, ValueError):
-            return text
+        return expand_snippet(text, session)

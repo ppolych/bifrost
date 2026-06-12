@@ -47,6 +47,18 @@ class SftpTransferQueueMixin:
         self._active_transfer_row = None
         self.transfer_queue.show()
 
+    def _clear_pending_transfers(self) -> None:
+        self._upload_queue.clear()
+        self._download_queue.clear()
+        root = self.transfer_queue.invisibleRootItem()
+        for i in range(root.childCount() - 1, -1, -1):
+            item = root.child(i)
+            meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+            if meta.get("status") == "Queued":
+                root.removeChild(item)
+        if root.childCount() == 0:
+            self.transfer_queue.hide()
+
     def _remove_queued_transfer(self, local: str, remote: str) -> None:
         root = self.transfer_queue.invisibleRootItem()
         for i in range(root.childCount() - 1, -1, -1):

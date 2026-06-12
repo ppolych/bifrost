@@ -12,11 +12,21 @@ class SnippetManager:
         return load_json(self.filename, {
             "Docker": {
                 "List Containers": "docker ps -a",
-                "Container Logs": "docker logs -f "
+                "Container Logs": "docker logs -f ",
+                "Container Shell": "docker exec -it  /bin/sh",
             },
             "System": {
                 "Disk Usage": "df -h",
-                "Memory Usage": "free -m"
+                "Memory Usage": "free -m",
+                "Open Ports": "ss -tulpen || netstat -tulpen",
+            },
+            "SSH": {
+                "Tmux Attach": "tmux new-session -A -s {name}",
+                "Remote Identity": "printf 'host={host} user={user} port={port}\\n'",
+            },
+            "Kubernetes": {
+                "Pods": "kubectl get pods -A",
+                "Events": "kubectl get events -A --sort-by=.lastTimestamp",
             }
         })
 
