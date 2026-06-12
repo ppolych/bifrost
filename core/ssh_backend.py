@@ -281,6 +281,28 @@ def _read_socks5_target(sock: socket.socket) -> tuple[str, int] | None:
     return host, int.from_bytes(port_bytes, "big")
 
 
+def _coerce_int(value, default: int, *, min_value: int | None = None, max_value: int | None = None) -> int:
+    try:
+        result = int(value if value not in (None, "") else default)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and result < min_value:
+        return default
+    if max_value is not None and result > max_value:
+        return default
+    return result
+
+
+def _coerce_float(value, default: float, *, min_value: float | None = None) -> float:
+    try:
+        result = float(value if value not in (None, "") else default)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and result < min_value:
+        return default
+    return result
+
+
 @dataclass
 class SshCredentials:
     host: str
@@ -308,18 +330,18 @@ class SshCredentials:
         """Build credentials from a session dict (sessions.json shape)."""
         return cls(
             host=data.get("host", ""),
-            port=int(data.get("port", 22) or 22),
+            port=_coerce_int(data.get("port"), 22, min_value=1, max_value=65535),
             username=data.get("user", "") or "",
             auth=data.get("auth", "agent"),
             key_filename=data.get("key_path") or None,
             certificate_filename=data.get("certificate_path") or None,
-            connect_timeout=float(data.get("connect_timeout", 15) or 15),
+            connect_timeout=_coerce_float(data.get("connect_timeout"), 15.0, min_value=1.0),
             agent_forwarding=bool(data.get("agent_forwarding", False)),
-            keepalive_interval=int(data.get("keepalive_interval", 0) or 0),
+            keepalive_interval=_coerce_int(data.get("keepalive_interval"), 0, min_value=0),
             tcp_keepalive=bool(data.get("tcp_keepalive", False)),
             known_hosts_file=data.get("known_hosts_file") or None,
             startup_command=data.get("command") or "",
-            tunnels=list(data.get("tunnels") or []),
+            tunnels=list(data.get("tunnels") or []) if isinstance(data.get("tunnels") or [], list) else [],
             proxy_command=data.get("proxy_command") or "",
             proxy_jump=data.get("proxy_jump") or "",
         )

@@ -165,6 +165,30 @@ def test_credentials_port_coercion_handles_empty():
     assert creds.port == 22
 
 
+def test_credentials_from_session_defaults_invalid_numeric_fields():
+    from core.ssh_backend import SshCredentials
+
+    creds = SshCredentials.from_session({
+        "host": "h",
+        "port": "not-a-port",
+        "connect_timeout": "slow",
+        "keepalive_interval": "often",
+        "tunnels": "L 127.0.0.1:1 h:1",
+    })
+
+    assert creds.port == 22
+    assert creds.connect_timeout == 15.0
+    assert creds.keepalive_interval == 0
+    assert creds.tunnels == []
+
+
+def test_credentials_from_session_rejects_out_of_range_port():
+    from core.ssh_backend import SshCredentials
+
+    assert SshCredentials.from_session({"host": "h", "port": 0}).port == 22
+    assert SshCredentials.from_session({"host": "h", "port": 70000}).port == 22
+
+
 def test_backend_emits_connecting_hint_before_ready():
     """Until the connect thread sets _ready, read() returns a 'Connecting…' hint
     rather than blocking the GUI thread indefinitely."""

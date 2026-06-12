@@ -14,7 +14,8 @@ class SessionManager:
         self.recent_sessions: list[str] = []
 
     def load(self):
-        return load_json(self.filename, self.get_defaults())
+        data = load_json(self.filename, self.get_defaults())
+        return data if isinstance(data, dict) else self.get_defaults()
 
     def save(self):
         try:

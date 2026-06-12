@@ -28,6 +28,46 @@ def _font_from_str(value: str) -> QFont:
         return default_monospace_font(10)
 
 
+def _coerce_int(value, default: int, *, min_value: int | None = None, max_value: int | None = None) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and result < min_value:
+        return default
+    if max_value is not None and result > max_value:
+        return default
+    return result
+
+
+def _coerce_float(value, default: float, *, min_value: float | None = None, max_value: float | None = None) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and result < min_value:
+        return default
+    if max_value is not None and result > max_value:
+        return default
+    return result
+
+
+def _coerce_bool(value, default: bool) -> bool:
+    return value if isinstance(value, bool) else default
+
+
+def _coerce_int_list(value, default: list[int]) -> list[int]:
+    if not isinstance(value, list):
+        return list(default)
+    out = []
+    for item in value:
+        try:
+            out.append(int(item))
+        except (TypeError, ValueError):
+            return list(default)
+    return out
+
+
 def default_settings() -> dict:
     return {
         # General
@@ -96,13 +136,51 @@ def default_settings() -> dict:
 def load_settings() -> dict:
     """Load settings, merging with defaults so new keys appear without manual upgrade."""
     raw = load_json(config_path(SETTINGS_FILE), {})
+    if not isinstance(raw, dict):
+        raw = {}
     merged = default_settings()
     for key, value in raw.items():
         if key == "font":
             merged[key] = _font_from_str(value) if isinstance(value, str) else merged[key]
         else:
             merged[key] = value
+    _sanitize_settings(merged, default_settings())
     return merged
+
+
+def _sanitize_settings(settings: dict, defaults: dict) -> None:
+    for key in (
+        "show_dashboard", "auto_sftp", "sftp_show_hidden", "confirm_close_tab",
+        "confirm_quit_with_sessions", "cursor_blink", "bold_is_bright",
+        "right_click_paste", "copy_on_select", "confirm_multiline_paste",
+        "confirm_large_paste", "auto_log", "strip_newlines_on_paste",
+        "restore_window_geometry", "ssh_agent_forwarding", "ssh_tcp_keepalive",
+    ):
+        settings[key] = _coerce_bool(settings.get(key), defaults[key])
+    for key, low, high in (
+        ("scrollback", 100, 200000),
+        ("wheel_lines", 1, 100),
+        ("large_paste_threshold", 1, 10000000),
+        ("opacity", 20, 100),
+        ("ssh_default_port", 1, 65535),
+        ("ssh_keepalive_interval", 0, 600),
+        ("last_sidebar_tab", 0, 99),
+    ):
+        settings[key] = _coerce_int(settings.get(key), defaults[key], min_value=low, max_value=high)
+    settings["ssh_connect_timeout"] = _coerce_float(
+        settings.get("ssh_connect_timeout"),
+        defaults["ssh_connect_timeout"],
+        min_value=1.0,
+        max_value=120.0,
+    )
+    settings["main_splitter_sizes"] = _coerce_int_list(
+        settings.get("main_splitter_sizes"),
+        defaults["main_splitter_sizes"],
+    )
+    settings["sidebar_splitter_sizes"] = _coerce_int_list(
+        settings.get("sidebar_splitter_sizes"),
+        defaults["sidebar_splitter_sizes"],
+    )
 
 
 def save_settings(settings: dict) -> None:

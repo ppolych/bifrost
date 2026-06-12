@@ -17,7 +17,9 @@ def list_distros() -> list[str]:
             timeout=5,
             check=False,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
         return []
     # `wsl.exe --list --quiet` emits UTF-16LE with NUL padding.
     raw = result.stdout.decode("utf-16-le", errors="ignore")

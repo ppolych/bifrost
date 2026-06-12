@@ -5,11 +5,21 @@ import sys
 
 def scan_ports(host, start_port=1, end_port=100):
     open_ports = []
+    try:
+        start_port = max(1, int(start_port))
+        end_port = min(65535, int(end_port))
+    except (TypeError, ValueError):
+        return open_ports
+    if start_port > end_port:
+        return open_ports
     for port in range(start_port, end_port + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.01)
-            if s.connect_ex((host, port)) == 0:
-                open_ports.append(port)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.01)
+                if s.connect_ex((host, port)) == 0:
+                    open_ports.append(port)
+        except OSError:
+            continue
     return open_ports
 
 

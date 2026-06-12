@@ -3,6 +3,8 @@ and the pyte VT pipeline parses real escape sequences into the screen buffer."""
 
 import json
 import os
+import subprocess
+import sys
 
 import pyte
 import pytest
@@ -21,6 +23,19 @@ def test_imports_all_modules(qapp):
     import core.wsl  # noqa: F401
     import widgets.terminal  # noqa: F401
     import widgets.terminal_container  # noqa: F401
+
+
+def test_default_settings_safe_before_qapplication():
+    proc = subprocess.run(
+        [sys.executable, "-c", "from core.settings_store import default_settings; default_settings()"],
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_atomic_write_round_trip(tmp_path):
@@ -68,6 +83,18 @@ def test_settings_round_trip(qapp, tmp_path, monkeypatch):
     assert loaded["font"].pointSize() == 14
 
 
+def test_load_settings_ignores_wrong_top_level_type(qapp, tmp_path, monkeypatch):
+    import core.settings_store as ss
+
+    monkeypatch.setattr(ss, "config_path", lambda name: str(tmp_path / name))
+    (tmp_path / "settings.json").write_text("[]", encoding="utf-8")
+
+    loaded = ss.load_settings()
+
+    assert loaded["show_dashboard"] is True
+    assert "font" in loaded
+
+
 def test_pyte_renders_ansi_color_and_cursor():
     """The single most important invariant: pyte must parse ANSI into structured cells.
     If this regresses, the terminal renders gibberish."""
@@ -101,6 +128,18 @@ def test_session_manager_persists_atomically(qapp, tmp_path, monkeypatch):
     assert any(s["name"] == "test-host" for s in raw["User sessions"])
 
 
+def test_session_manager_uses_defaults_for_wrong_top_level_type(qapp, tmp_path, monkeypatch):
+    import core.persistence as persistence
+
+    monkeypatch.setattr(persistence, "config_path", lambda name: str(tmp_path / name))
+    (tmp_path / "sessions.json").write_text("[]", encoding="utf-8")
+
+    sm = persistence.SessionManager()
+
+    assert isinstance(sm.sessions, dict)
+    assert sm.sessions["Local sessions"][0]["name"] == "Local Shell"
+
+
 def test_wsl_helpers_are_safe_off_windows():
     from core import wsl
 
@@ -109,6 +148,34 @@ def test_wsl_helpers_are_safe_off_windows():
     assert isinstance(distros, list)
     assert wsl.spawn_command() == ["wsl.exe"]
     assert wsl.spawn_command("Ubuntu") == ["wsl.exe", "-d", "Ubuntu"]
+
+
+def test_wsl_list_distros_handles_failed_wsl_exe(monkeypatch):
+    import subprocess
+
+    from core import wsl
+
+    monkeypatch.setattr(wsl.sys, "platform", "win32")
+    monkeypatch.setattr(
+        wsl.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, stdout=b"Ubuntu\x00"),
+    )
+
+    assert wsl.list_distros() == []
+
+
+def test_wsl_list_distros_handles_os_error(monkeypatch):
+    from core import wsl
+
+    monkeypatch.setattr(wsl.sys, "platform", "win32")
+
+    def fail(*args, **kwargs):
+        raise OSError("wsl unavailable")
+
+    monkeypatch.setattr(wsl.subprocess, "run", fail)
+
+    assert wsl.list_distros() == []
 
 
 def test_ping_command_branches_by_platform(monkeypatch):
@@ -122,6 +189,35 @@ def test_ping_command_branches_by_platform(monkeypatch):
 
     monkeypatch.setattr(nt.sys, "platform", "win32")
     assert nt._ping_command("1.1.1.1") == ["ping", "-n", "1", "-w", "1000", "1.1.1.1"]
+
+
+def test_scan_ports_clamps_range_and_ignores_socket_errors(monkeypatch):
+    import core.network_tools as nt
+
+    scanned = []
+
+    class FakeSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def settimeout(self, timeout):
+            pass
+
+        def connect_ex(self, target):
+            scanned.append(target)
+            if target[1] == 2:
+                raise OSError("network unreachable")
+            return 0 if target[1] == 3 else 1
+
+    monkeypatch.setattr(nt.socket, "socket", lambda *args, **kwargs: FakeSocket())
+
+    assert nt.scan_ports("example.invalid", -10, 3) == [3]
+    assert [port for _host, port in scanned] == [1, 2, 3]
+    assert nt.scan_ports("example.invalid", 5, 4) == []
+    assert nt.scan_ports("example.invalid", "bad", 4) == []
 
 
 @pytest.mark.skipif(os.environ.get("SKIP_TERMINAL_TEST") == "1",

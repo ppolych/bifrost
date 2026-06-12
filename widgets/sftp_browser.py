@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import posixpath
+import re
 import stat
 from datetime import datetime
 from typing import Optional
@@ -117,6 +118,8 @@ _EXT_THEME_ICONS = {
 
 log = logging.getLogger(__name__)
 
+_LOCAL_FILENAME_UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
 
 def _format_size(n: int) -> str:
     if n < 1024:
@@ -126,6 +129,15 @@ def _format_size(n: int) -> str:
         if n < 1024:
             return f"{n:.1f} {unit}"
     return f"{n:.1f} PB"
+
+
+def _safe_local_name(name: str, default: str = "download") -> str:
+    cleaned = _LOCAL_FILENAME_UNSAFE.sub("_", name or "").strip(" .")
+    return cleaned or default
+
+
+def _valid_remote_leaf_name(name: str) -> bool:
+    return bool(name) and name not in {".", ".."} and "/" not in name and "\\" not in name
 
 
 class _TransferThread(QThread):
@@ -249,7 +261,7 @@ class _TransferThread(QThread):
             if child.filename in (".", ".."):
                 continue
             remote_child = posixpath.join(remote_dir, child.filename)
-            local_child = os.path.join(local_dir, child.filename)
+            local_child = os.path.join(local_dir, _safe_local_name(child.filename))
             if stat.S_ISDIR(child.st_mode or 0):
                 done = self._download_dir(remote_child, local_child, done, total)
             else:
@@ -630,12 +642,13 @@ class SftpBrowser(QWidget):
     def _download_remote(self, remote: str, is_dir: bool = False) -> None:
         if self.sftp is None or self._transfer is not None:
             return
+        name = _safe_local_name(posixpath.basename(remote))
         if is_dir:
             parent = QFileDialog.getExistingDirectory(self, "Download folder to", "")
             if parent:
-                self._start_transfer("download", os.path.join(parent, posixpath.basename(remote)), remote)
+                self._start_transfer("download", os.path.join(parent, name), remote)
         else:
-            local, _ = QFileDialog.getSaveFileName(self, "Save as", posixpath.basename(remote))
+            local, _ = QFileDialog.getSaveFileName(self, "Save as", name)
             if local:
                 self._start_transfer("download", local, remote)
 
@@ -650,7 +663,7 @@ class SftpBrowser(QWidget):
         if not parent:
             return
         queue = [
-            (os.path.join(parent, posixpath.basename(remote)), remote)
+            (os.path.join(parent, _safe_local_name(posixpath.basename(remote))), remote)
             for remote, _is_dir in items
         ]
         first_local, first_remote = queue[0]
@@ -668,6 +681,9 @@ class SftpBrowser(QWidget):
         )
         new_name = new_name.strip()
         if not ok or not new_name or new_name == current_name:
+            return
+        if not _valid_remote_leaf_name(new_name):
+            QMessageBox.warning(self, "Invalid name", "Enter a single file or folder name.")
             return
         target = posixpath.join(posixpath.dirname(remote), new_name)
         try:
@@ -799,6 +815,9 @@ class SftpBrowser(QWidget):
         name = name.strip()
         if not ok or not name:
             return
+        if not _valid_remote_leaf_name(name):
+            QMessageBox.warning(self, "Invalid folder name", "Enter a single folder name.")
+            return
         try:
             self.sftp.mkdir(posixpath.join(self.cwd, name))
         except (OSError, paramiko.SSHException) as e:
@@ -880,6 +899,9 @@ class SftpBrowser(QWidget):
         )
         new_name = new_name.strip()
         if not ok or not new_name:
+            return None
+        if not _valid_remote_leaf_name(new_name):
+            QMessageBox.warning(self, "Invalid name", "Enter a single file or folder name.")
             return None
         candidate = posixpath.join(directory, new_name)
         if self._remote_exists(candidate):

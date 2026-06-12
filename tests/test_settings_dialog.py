@@ -98,6 +98,35 @@ def test_settings_dialog_round_trip(qapp):
     assert out["bell_mode"] == "visual"
 
 
+def test_load_settings_sanitizes_bad_numeric_and_bool_values(qapp, tmp_path, monkeypatch):
+    import json
+
+    import core.settings_store as ss
+    from widgets.settings_dialog import SettingsDialog
+
+    monkeypatch.setattr(ss, "config_path", lambda name: str(tmp_path / name))
+    (tmp_path / "settings.json").write_text(json.dumps({
+        "opacity": "opaque",
+        "ssh_default_port": "not-a-port",
+        "ssh_connect_timeout": "slow",
+        "ssh_keepalive_interval": -1,
+        "show_dashboard": "yes",
+        "main_splitter_sizes": ["260", "940"],
+        "sidebar_splitter_sizes": ["bad"],
+    }), encoding="utf-8")
+
+    loaded = ss.load_settings()
+
+    assert loaded["opacity"] == 100
+    assert loaded["ssh_default_port"] == 22
+    assert loaded["ssh_connect_timeout"] == 15
+    assert loaded["ssh_keepalive_interval"] == 30
+    assert loaded["show_dashboard"] is True
+    assert loaded["main_splitter_sizes"] == [260, 940]
+    assert loaded["sidebar_splitter_sizes"] == []
+    SettingsDialog(current_settings=loaded)
+
+
 def test_credentials_flow_through_to_ssh_credentials():
     """The settings keys map cleanly into the SshCredentials a backend uses."""
     from core.ssh_backend import SshCredentials

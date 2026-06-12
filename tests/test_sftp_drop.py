@@ -284,6 +284,27 @@ def test_download_selected_items_starts_first_and_queues_rest(browser, monkeypat
     assert queued == [("download", os.path.join("C:/Downloads", "README"), "/home/user/README")]
 
 
+def test_download_selected_items_sanitizes_local_names(browser, monkeypatch):
+    from PyQt6.QtWidgets import QFileDialog
+
+    browser.sftp = MagicMock()
+    started = []
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: "C:/Downloads")
+    monkeypatch.setattr(
+        browser,
+        "_start_transfer",
+        lambda mode, local, remote: started.append((mode, local, remote)),
+    )
+
+    browser._download_remote_items([
+        ("/home/user/bad:name?.txt", False),
+        ("/home/user/trailing. ", False),
+    ])
+
+    assert started == [("download", os.path.join("C:/Downloads", "bad_name_.txt"), "/home/user/bad:name?.txt")]
+    assert browser._download_queue == [(os.path.join("C:/Downloads", "trailing"), "/home/user/trailing. ")]
+
+
 def test_open_remote_folder_refreshes_listing(browser, monkeypatch):
     refreshed = []
     monkeypatch.setattr(browser, "_refresh", lambda: refreshed.append(True))
@@ -429,6 +450,45 @@ def test_download_remote_folder_uses_directory_picker(browser, monkeypatch):
     assert started == [("download", os.path.join("C:/Downloads", "src"), "/home/user/src")]
 
 
+def test_download_remote_folder_sanitizes_local_folder_name(browser, monkeypatch):
+    from PyQt6.QtWidgets import QFileDialog
+
+    browser.sftp = MagicMock()
+    started = []
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: "C:/Downloads")
+    monkeypatch.setattr(
+        browser,
+        "_start_transfer",
+        lambda mode, local, remote: started.append((mode, local, remote)),
+    )
+
+    browser._download_remote("/home/user/bad:folder?", is_dir=True)
+
+    assert started == [("download", os.path.join("C:/Downloads", "bad_folder_"), "/home/user/bad:folder?")]
+
+
+def test_transfer_thread_download_dir_sanitizes_local_child_names(qapp, tmp_path):
+    from widgets.sftp_browser import _TransferThread
+
+    class FakeSftp:
+        def listdir_attr(self, remote):
+            return [
+                type("Attr", (), {"filename": "bad:name?.txt", "st_mode": 0o100644, "st_size": 4})(),
+            ]
+
+        def get(self, remote, local, callback=None):
+            if callback:
+                callback(4, 4)
+            with open(local, "w", encoding="utf-8") as f:
+                f.write("data")
+
+    thread = _TransferThread(FakeSftp(), "download", str(tmp_path), "/remote")
+    done = thread._download_dir("/remote", str(tmp_path), 0, 4)
+
+    assert done == 4
+    assert (tmp_path / "bad_name_.txt").read_text() == "data"
+
+
 def test_new_folder_creates_remote_directory(browser, monkeypatch):
     from PyQt6.QtWidgets import QInputDialog
 
@@ -439,6 +499,34 @@ def test_new_folder_creates_remote_directory(browser, monkeypatch):
     browser._new_folder()
 
     browser.sftp.mkdir.assert_called_once_with("/home/user/new-dir")
+
+
+def test_new_folder_rejects_path_like_name(browser, monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog, QMessageBox
+
+    warnings = []
+    browser.sftp = MagicMock()
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("../bad", True))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    browser._new_folder()
+
+    browser.sftp.mkdir.assert_not_called()
+    assert warnings
+
+
+def test_rename_remote_rejects_path_like_name(browser, monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog, QMessageBox
+
+    warnings = []
+    browser.sftp = MagicMock()
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("nested/name", True))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    browser._rename_remote("/home/user/README")
+
+    browser.sftp.rename.assert_not_called()
+    assert warnings
 
 
 def test_cancel_transfer_marks_thread_cancelled(browser):
@@ -560,6 +648,19 @@ def test_upload_conflict_rename(browser, monkeypatch):
     assert browser._resolve_upload_conflicts([
         ("/tmp/a.txt", "/home/user/a.txt"),
     ]) == [("/tmp/a.txt", "/home/user/a (2).txt")]
+
+
+def test_upload_conflict_rename_rejects_path_like_name(browser, monkeypatch):
+    from PyQt6.QtWidgets import QInputDialog, QMessageBox
+
+    warnings = []
+    browser.sftp = MagicMock()
+    browser.sftp.stat.side_effect = OSError("missing")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("../renamed", True))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    assert browser._prompt_remote_rename("/home/user/a.txt") is None
+    assert warnings
 
 
 def test_next_available_remote_name(browser):

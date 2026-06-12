@@ -4,7 +4,7 @@ import sys
 import tempfile
 
 from PyQt6.QtCore import QStandardPaths
-from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFont, QFontDatabase, QGuiApplication
 
 
 def default_monospace_font(size: int = 10) -> QFont:
@@ -15,6 +15,11 @@ def default_monospace_font(size: int = 10) -> QFont:
         candidates = ["Cascadia Mono", "Consolas", "Lucida Console", "Courier New"]
     else:
         candidates = ["DejaVu Sans Mono", "Liberation Mono", "Monospace", "Courier New"]
+
+    if QGuiApplication.instance() is None:
+        fallback = QFont(candidates[0], size)
+        fallback.setStyleHint(QFont.StyleHint.Monospace)
+        return fallback
 
     available = set(QFontDatabase.families())
     for name in candidates:
