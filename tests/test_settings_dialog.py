@@ -13,6 +13,16 @@ def test_color_schemes_have_unique_palettes():
     assert len(seen) == len(SCHEMES)
 
 
+def test_session_dialog_uses_central_color_scheme_names(qapp):
+    from core.color_schemes import scheme_names
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog()
+
+    names = [dlg.color_scheme.itemText(i) for i in range(dlg.color_scheme.count())]
+    assert names == scheme_names()
+
+
 def test_apply_scheme_mutates_settings():
     from core.color_schemes import apply_scheme
 
@@ -140,3 +150,44 @@ def test_credentials_flow_through_to_ssh_credentials():
     assert creds.connect_timeout == 30.0
     assert creds.agent_forwarding is True
     assert creds.known_hosts_file == "/tmp/known_hosts"
+
+
+def test_session_terminal_overrides_apply_to_tab_settings(qapp):
+    from PyQt6.QtGui import QFont
+
+    from bifrost_app import BifrostApp
+    from core.settings_store import default_settings
+
+    app = BifrostApp.__new__(BifrostApp)
+    app.settings = default_settings()
+    app.settings["font"] = QFont("DejaVu Sans Mono", 10)
+
+    settings = BifrostApp._settings_for_session(app, {
+        "overrides": {
+            "scheme": "Nord",
+            "font": "Courier New, 14",
+        }
+    })
+
+    assert settings["term_bg"] == "#2e3440"
+    assert settings["term_fg"] == "#d8dee9"
+    assert settings["color_scheme"] == "Nord"
+    assert settings["font"].family() == "Courier New"
+    assert settings["font"].pointSize() == 14
+    assert app.settings["term_bg"] == "#000000"
+
+
+def test_session_terminal_overrides_reject_stale_scheme_name(qapp):
+    from bifrost_app import BifrostApp
+    from core.settings_store import default_settings
+
+    app = BifrostApp.__new__(BifrostApp)
+    app.settings = default_settings()
+
+    settings = BifrostApp._settings_for_session(app, {
+        "overrides": {"scheme": "Solarized"}
+    })
+
+    assert settings["color_scheme"] == "Default"
+    assert settings["term_bg"] == "#000000"
+    assert settings["term_fg"] == "#d3d7cf"

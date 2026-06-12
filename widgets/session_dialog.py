@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core import wsl
+from core.color_schemes import scheme_names
 
 
 class SessionDialog(QDialog):
@@ -215,7 +216,7 @@ class SessionDialog(QDialog):
         self.term_layout.addRow("Font:", self.font_input)
 
         self.color_scheme = QComboBox()
-        self.color_scheme.addItems(["Default", "Solarized", "Monokai", "Black on White"])
+        self.color_scheme.addItems(scheme_names())
         self.term_layout.addRow("Color Scheme:", self.color_scheme)
 
         self.tabs.addTab(self.term_tab, "Terminal Settings")

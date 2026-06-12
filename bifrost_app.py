@@ -34,6 +34,7 @@ from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
 from widgets.remote_monitor import RemoteMonitorWidget
 from core.styles import get_dark_theme
+from core.color_schemes import DEFAULT_NAME, SCHEMES, apply_scheme
 from core import credentials, session_crypto, wake_on_lan, wsl
 from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
@@ -80,6 +81,15 @@ def _strip_outer_quotes(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def _font_from_override(value: str, fallback: QFont) -> QFont:
+    try:
+        family, size = value.rsplit(",", 1)
+        font = QFont(family.strip(), int(size))
+    except (AttributeError, TypeError, ValueError):
+        return QFont(fallback)
+    return font if font.family() else QFont(fallback)
 
 
 class BifrostApp(QMainWindow):
@@ -815,7 +825,7 @@ class BifrostApp(QMainWindow):
         name = session.get("name") or "Session"
         proto = session.get("type")
         if proto == "WSL":
-            self.new_terminal_tab(name, kind="WSL", distro=session.get("distro") or None)
+            self.new_terminal_tab(name, kind="WSL", distro=session.get("distro") or None, session_data=session)
         elif proto == "SSH":
             self.new_terminal_tab(name, ssh_session=session)
         elif proto == "Telnet":
@@ -825,6 +835,7 @@ class BifrostApp(QMainWindow):
                 kind="Telnet",
                 host=session.get("host") or "localhost",
                 port=int(port) if str(port or "").isdigit() else 23,
+                session_data=session,
             )
         elif proto == "Serial":
             baud = session.get("baudrate")
@@ -833,14 +844,19 @@ class BifrostApp(QMainWindow):
                 kind="Serial",
                 device=session.get("device") or "",
                 baud=int(baud) if str(baud or "").isdigit() else 115200,
+                session_data=session,
             )
         elif proto == "VNC":
             self.open_vnc_session(session)
         elif proto == "Local":
             cmd = session.get("cmd")
-            self.new_terminal_tab(name, command=[cmd] if isinstance(cmd, str) else cmd)
+            self.new_terminal_tab(
+                name,
+                command=[cmd] if isinstance(cmd, str) else cmd,
+                session_data=session,
+            )
         else:
-            self.new_terminal_tab(name)
+            self.new_terminal_tab(name, session_data=session)
 
     def save_current_workspace(self):
         sessions = self._current_workspace_sessions()
@@ -1039,6 +1055,7 @@ class BifrostApp(QMainWindow):
         kind=None,
         distro=None,
         ssh_session: dict | None = None,
+        session_data: dict | None = None,
         host=None,
         port=None,
         device=None,
@@ -1065,15 +1082,18 @@ class BifrostApp(QMainWindow):
             if session is None:
                 session = self._session_from_backend(name, backend)
             prefix = "🌐 "
+        elif isinstance(session_data, dict):
+            session = session_data
 
         if name != "Local Shell":
             self.session_manager.add_to_recents(name)
 
+        tab_settings = self._settings_for_session(session)
         container = TerminalContainer(
             name,
             command,
             self.on_terminal_key,
-            settings=self.settings,
+            settings=tab_settings,
             backend=backend,
             ssh_session=session if backend is not None else None,
         )
@@ -1085,6 +1105,21 @@ class BifrostApp(QMainWindow):
         if self.multi_exec_enabled:
             self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
+
+    def _settings_for_session(self, session: dict | None) -> dict:
+        settings = dict(self.settings)
+        overrides = session.get("overrides") if isinstance(session, dict) else None
+        if not isinstance(overrides, dict):
+            return settings
+        scheme = overrides.get("scheme")
+        if scheme:
+            scheme_name = scheme if scheme in SCHEMES else DEFAULT_NAME
+            apply_scheme(settings, scheme_name)
+            settings["color_scheme"] = scheme_name
+        font_override = overrides.get("font")
+        if font_override:
+            settings["font"] = _font_from_override(font_override, settings["font"])
+        return settings
 
     def open_vnc_session(self, session: dict):
         """Open a VNC viewer tab. The password is prompted per-connect and
@@ -1381,11 +1416,16 @@ class BifrostApp(QMainWindow):
             self.sidebar.refresh_sessions()
             self._refresh_credentials_view()
             if data["type"] == "WSL":
-                self.new_terminal_tab(data["name"], kind="WSL", distro=data.get("distro") or None)
+                self.new_terminal_tab(
+                    data["name"],
+                    kind="WSL",
+                    distro=data.get("distro") or None,
+                    session_data=data,
+                )
             elif data["type"] == "SSH":
                 self.new_terminal_tab(data["name"], ssh_session=data)
             else:
-                self.new_terminal_tab(data["name"])
+                self.new_terminal_tab(data["name"], session_data=data)
 
     def edit_session(self, parent_path: list, session: dict, section: str = "connection"):
         dialog = SessionDialog(self, session=session)
