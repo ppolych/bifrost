@@ -28,10 +28,6 @@ class Dashboard(QWidget):
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
         
-        logo_placeholder = QLabel("PRO")
-        logo_placeholder.setStyleSheet("padding: 10px; font-weight: bold;")
-        header_layout.addWidget(logo_placeholder)
-        
         self.layout.addLayout(header_layout)
         self.layout.addSpacing(30)
 

@@ -168,6 +168,24 @@ def test_workspace_sessions_capture_cluster_flag(app):
     assert flags == {"m": True, "o": False}
 
 
+def test_workspace_sessions_capture_local_terminal(app):
+    from widgets.terminal_container import TerminalContainer
+
+    local = TerminalContainer("shell", ["/bin/zsh"])
+    app.tabs.addTab(local, "shell")
+
+    sessions = app._current_workspace_sessions()
+
+    assert sessions == [
+        {
+            "name": "shell",
+            "type": "Local",
+            "cmd": ["/bin/zsh"],
+            "cluster": False,
+        }
+    ]
+
+
 def test_open_workspace_restores_cluster_membership(app, monkeypatch):
     from PyQt6.QtWidgets import QInputDialog
     from widgets.terminal_container import TerminalContainer

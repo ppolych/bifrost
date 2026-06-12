@@ -88,6 +88,16 @@ def test_session_dialog_rdp_port_round_trip(qapp):
     assert dlg2.rdp_port_input.text() == "3390"
 
 
+def test_dashboard_has_no_pro_placeholder(qapp):
+    from PyQt6.QtWidgets import QLabel
+    from widgets.dashboard import Dashboard
+
+    dashboard = Dashboard()
+    labels = [label.text() for label in dashboard.findChildren(QLabel)]
+
+    assert "PRO" not in labels
+
+
 def test_apply_scheme_mutates_settings():
     from core.color_schemes import apply_scheme
 

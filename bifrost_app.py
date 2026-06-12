@@ -972,7 +972,7 @@ class BifrostApp(QMainWindow):
             QMessageBox.information(
                 self,
                 "Save workspace",
-                "There are no SSH tabs to save in this workspace.",
+                "There are no terminal sessions to save in this workspace.",
             )
             return
         name, ok = QInputDialog.getText(self, "Save workspace", "Workspace name:")
@@ -1063,8 +1063,14 @@ class BifrostApp(QMainWindow):
             elif backend is not None:
                 session = self._session_from_backend(widget.name, backend)
             else:
-                continue
-            if session.get("type") == "SSH" or session.get("host"):
+                if widget.command is None:
+                    continue
+                session = {
+                    "name": widget.name or "Local Shell",
+                    "type": "Local",
+                    "cmd": widget.command,
+                }
+            if session.get("type") == "SSH" or session.get("host") or session.get("type") == "Local":
                 session["cluster"] = widget in self.cluster_tabs
                 sessions.append(session)
         return sessions
