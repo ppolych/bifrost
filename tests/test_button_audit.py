@@ -242,11 +242,17 @@ def test_ssh_browser_shows_tunnel_count(qapp):
             status="connected",
             tunnels=[
                 {"index": 0, "label": "L 127.0.0.1:15432 db:5432", "active": True},
-                {"index": 1, "label": "D 127.0.0.1:1080", "active": False},
+                {
+                    "index": 1,
+                    "label": "D 127.0.0.1:1080",
+                    "endpoint": "127.0.0.1:1080",
+                    "target": "SOCKS proxy",
+                    "active": False,
+                },
             ],
         ),
     ])
 
     item = b.tree.topLevelItem(0)
-    assert item.text(4) == "1"
-    assert "15432" in item.toolTip(4)
+    assert item.text(4) == "1/2"
+    assert "SOCKS proxy" in item.toolTip(4)

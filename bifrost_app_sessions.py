@@ -1,4 +1,5 @@
 from bifrost_app_deps import *
+from core.workspaces import workspace_summary
 
 
 class BifrostSessionsMixin:
@@ -82,10 +83,11 @@ class BifrostSessionsMixin:
             QMessageBox.warning(self, "Open workspace", "Workspace is empty or missing.")
             return
         if self.settings.get("confirm_workspace_reconnect", True):
+            count = len(sessions)
+            summary = workspace_summary(sessions)
             reply = QMessageBox.question(
-                self,
-                "Open workspace",
-                f"Open {len(sessions)} remote session{'s' if len(sessions) != 1 else ''} from '{name}'?",
+                self, "Open workspace",
+                f"Open {count} session{'s' if count != 1 else ''} from '{name}'?\n\n{summary}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -95,9 +97,6 @@ class BifrostSessionsMixin:
         for session in sessions:
             before = self.tabs.count()
             self.on_session_activated(session)
-            # Restore cluster membership saved with the workspace. The new tab
-            # (if one opened — the user may cancel a credential prompt) is
-            # always appended last.
             if session.get("cluster") and self.tabs.count() > before:
                 container = self.tabs.widget(self.tabs.count() - 1)
                 if isinstance(container, TerminalContainer):

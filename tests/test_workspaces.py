@@ -86,3 +86,13 @@ def test_workspace_manager_reads_legacy_list_profiles(tmp_path, monkeypatch):
 
     assert manager.get("Legacy")[0]["host"] == "legacy.internal"
     assert manager.get_profile("Legacy")["layout"] == {}
+
+
+def test_workspace_summary_counts_types_and_clustered():
+    from core.workspaces import workspace_summary
+
+    assert workspace_summary([
+        {"type": "SSH", "cluster": True},
+        {"type": "SSH"},
+        {"type": "Local"},
+    ]) == "Local: 1, SSH: 2, Clustered: 1"

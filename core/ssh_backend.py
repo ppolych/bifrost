@@ -23,6 +23,7 @@ from core.ssh_tunnels import (
     parse_tunnel_spec,
     start_tunnels,
 )
+from core.ssh_tunnel_status import forwarder_status
 
 log = logging.getLogger(__name__)
 
@@ -275,14 +276,7 @@ class ParamikoBackend:
         return len(self._forwarders)
 
     def tunnel_statuses(self) -> list[dict]:
-        return [
-            {
-                "index": i,
-                "label": forwarder.spec.label,
-                "active": forwarder.active,
-            }
-            for i, forwarder in enumerate(self._forwarders)
-        ]
+        return [forwarder_status(i, f) for i, f in enumerate(self._forwarders)]
 
     def stop_tunnel(self, index: int) -> bool:
         if index < 0 or index >= len(self._forwarders):

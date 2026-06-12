@@ -267,7 +267,10 @@ def test_tunnel_status_and_stop(monkeypatch):
 
     assert started == ["L 127.0.0.1:15432 db:5432"]
     assert backend.tunnel_count == 1
-    assert backend.tunnel_statuses()[0]["active"] is True
+    status = backend.tunnel_statuses()[0]
+    assert status["active"] is True
+    assert status["endpoint"] == "127.0.0.1:15432"
+    assert status["target"] == "db:5432"
     assert backend.stop_tunnel(0) is True
     assert backend.tunnel_statuses()[0]["active"] is False
     assert backend.stop_tunnel(99) is False

@@ -38,3 +38,13 @@ def test_redacting_formatter_masks_secret_values():
     formatter = RedactingFormatter("%(message)s")
 
     assert formatter.format(record) == "password=<redacted> port=22"
+
+
+def test_diagnostic_text_redacts_secrets_and_home(monkeypatch):
+    from core.diagnostics import diagnostic_text
+
+    monkeypatch.setenv("HOME", "/home/alice")
+
+    assert diagnostic_text("/home/alice/.config password=secret") == (
+        "~/.config password=<redacted>"
+    )

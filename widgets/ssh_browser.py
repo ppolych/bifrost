@@ -12,6 +12,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -93,7 +94,7 @@ class SshBrowser(QWidget):
         for c in connections:
             tunnels = c.tunnels or []
             active_tunnels = [t for t in tunnels if t.get("active")]
-            tunnel_text = str(len(active_tunnels)) if active_tunnels else ""
+            tunnel_text = f"{len(active_tunnels)}/{len(tunnels)}" if tunnels else ""
             item = QTreeWidgetItem(self.tree, [c.host, c.user, str(c.port), c.status, tunnel_text])
             item.setData(0, Qt.ItemDataRole.UserRole, c.tab_index)
             item.setData(0, Qt.ItemDataRole.UserRole + 1, tunnels)
@@ -111,7 +112,7 @@ class SshBrowser(QWidget):
             item.setToolTip(3, f"SSH session is {c.status}")
             if tunnels:
                 item.setToolTip(4, "\n".join(
-                    f"{t.get('label')} - {'active' if t.get('active') else 'stopped'}"
+                    self._tunnel_tooltip_line(t)
                     for t in tunnels
                 ))
 
@@ -162,6 +163,12 @@ class SshBrowser(QWidget):
                 label = tunnel.get("label", "Tunnel")
                 active = bool(tunnel.get("active"))
                 tunnel_index = int(tunnel.get("index", -1))
+                endpoint = tunnel.get("endpoint") or ""
+                if endpoint:
+                    copy = tunnel_menu.addAction(f"Copy endpoint {endpoint}")
+                    copy.triggered.connect(
+                        lambda _checked=False, value=endpoint: QApplication.clipboard().setText(value)
+                    )
                 action = tunnel_menu.addAction(
                     f"Stop {label}" if active else f"{label} (stopped)"
                 )
@@ -170,3 +177,10 @@ class SshBrowser(QWidget):
                     lambda _checked=False, ti=tunnel_index: self.stop_tunnel.emit(int(idx), ti)
                 )
         menu.exec(self.tree.mapToGlobal(pos))
+
+    def _tunnel_tooltip_line(self, tunnel: dict) -> str:
+        state = "active" if tunnel.get("active") else "stopped"
+        endpoint = tunnel.get("endpoint") or ""
+        target = tunnel.get("target") or ""
+        detail = f" ({endpoint} -> {target})" if endpoint or target else ""
+        return f"{tunnel.get('label')} - {state}{detail}"

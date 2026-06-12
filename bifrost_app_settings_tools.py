@@ -1,4 +1,5 @@
 from bifrost_app_deps import *
+from core.diagnostics import diagnostic_text
 from core.snippet_variables import expand_snippet
 
 
@@ -130,8 +131,8 @@ class BifrostSettingsToolsMixin:
             f"Paramiko: {paramiko.__version__}",
             f"pyte: {getattr(pyte, '__version__', 'unknown')}",
             "",
-            f"Config dir: {config_dir()}",
-            f"Log file: {_log_path()}",
+            f"Config dir: {diagnostic_text(config_dir())}",
+            f"Log file: {diagnostic_text(_log_path())}",
             f"Keyring available: {'yes' if credentials.is_available() else 'no'}",
             f"SSH agent: {ssh_agent}",
             f"RDP client: {rdp_client_status()}",

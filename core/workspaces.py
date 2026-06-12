@@ -78,6 +78,20 @@ class WorkspaceManager:
         return True
 
 
+def workspace_summary(sessions: list[dict]) -> str:
+    counts: dict[str, int] = {}
+    clustered = 0
+    for session in sessions:
+        kind = str(session.get("type") or "SSH")
+        counts[kind] = counts.get(kind, 0) + 1
+        if session.get("cluster"):
+            clustered += 1
+    parts = [f"{kind}: {counts[kind]}" for kind in sorted(counts)]
+    if clustered:
+        parts.append(f"Clustered: {clustered}")
+    return ", ".join(parts) or "No sessions"
+
+
 def _sanitize_session(session: dict) -> dict:
     cleaned = {}
     for key, value in session.items():
