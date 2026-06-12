@@ -157,10 +157,32 @@ def test_application_theme_stylesheets_are_distinct():
 
     styles = {name: get_theme_stylesheet(name) for name in THEME_NAMES}
 
+    assert "Nord" in THEME_NAMES
+    assert "Dracula" in THEME_NAMES
+    assert "Gruvbox Dark" in THEME_NAMES
+    assert "One Dark" in THEME_NAMES
+    assert "Tokyo Night" in THEME_NAMES
+    assert "Graphite" in THEME_NAMES
     assert len(set(styles.values())) == len(THEME_NAMES)
-    assert "#f4f4f4" in styles["Light"]
+    assert "#f5f6f8" in styles["Light"]
     assert "#eee8d5" in styles["Solarized"]
-    assert "2px solid #ffffff" in styles["High Contrast"]
+    assert "#88c0d0" in styles["Nord"]
+    assert "#bd93f9" in styles["Dracula"]
+    assert "#fabd2f" in styles["Gruvbox Dark"]
+    assert "#61afef" in styles["One Dark"]
+    assert "#7aa2f7" in styles["Tokyo Night"]
+    assert "#8ab4f8" in styles["Graphite"]
+    assert "#ffff00" in styles["High Contrast"]
+
+
+def test_settings_dialog_uses_central_application_theme_names(qapp):
+    from core.styles import THEME_NAMES
+    from widgets.settings_dialog import SettingsDialog
+
+    dlg = SettingsDialog()
+
+    names = [dlg.theme_combo.itemText(i) for i in range(dlg.theme_combo.count())]
+    assert names == THEME_NAMES
 
 
 def test_apply_global_visuals_applies_application_theme(qapp):
@@ -177,7 +199,7 @@ def test_apply_global_visuals_applies_application_theme(qapp):
 
     BifrostApp.apply_global_visuals(app)
 
-    assert "#f4f4f4" in app.styleSheet()
+    assert "#f5f6f8" in app.styleSheet()
     assert app.windowOpacity() == pytest.approx(0.85, abs=0.01)
 
 
