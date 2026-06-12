@@ -42,6 +42,7 @@ from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
 from core.logging_setup import _log_path, configure_logging
 from core.mobaxterm_import import parse_mobaxterm_file
+from core.rdp import RdpLaunchError, launch_rdp_session
 from core.ssh_config_import import parse_ssh_config_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
@@ -952,6 +953,8 @@ class BifrostApp(QMainWindow):
             )
         elif proto == "VNC":
             self.open_vnc_session(session)
+        elif proto == "RDP":
+            self.open_rdp_session(session)
         elif proto == "Local":
             cmd = session.get("cmd")
             self.new_terminal_tab(
@@ -1145,6 +1148,14 @@ class BifrostApp(QMainWindow):
                 "host": host or "localhost",
                 "port": port if port.isdigit() else 5900,
             })
+        elif method == "RDP":
+            host, _, port = text.partition(":")
+            self.open_rdp_session({
+                "name": text,
+                "type": "RDP",
+                "host": host or "localhost",
+                "port": port if port.isdigit() else 3389,
+            })
         elif method == "WSL":
             self.new_terminal_tab(f"WSL: {text or 'default'}", kind="WSL", distro=text or None)
         elif method == "Local":
@@ -1295,6 +1306,17 @@ class BifrostApp(QMainWindow):
         self.tabs.addTab(viewer, "🖥 " + name)
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
         self.session_manager.add_to_recents(name)
+
+    def open_rdp_session(self, session: dict):
+        """Open an RDP session using the platform's external RDP client."""
+        name = session.get("name") or f"{session.get('host') or 'localhost'}:{session.get('port') or 3389}"
+        try:
+            command = launch_rdp_session(session)
+        except RdpLaunchError as e:
+            QMessageBox.warning(self, "RDP launch failed", str(e))
+            return
+        self.session_manager.add_to_recents(name)
+        self.status_bar.showMessage(f"Launched RDP session via {os.path.basename(command[0])}", 5000)
 
     def _session_from_backend(self, name: str, backend: ParamikoBackend) -> dict:
         creds = backend.creds

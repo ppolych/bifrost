@@ -18,6 +18,7 @@ def test_imports_all_modules(qapp):
     import core.network_tools  # noqa: F401
     import core.persistence  # noqa: F401
     import core.platform_utils  # noqa: F401
+    import core.rdp  # noqa: F401
     import core.settings_store  # noqa: F401
     import core.terminal_backend  # noqa: F401
     import core.wsl  # noqa: F401
