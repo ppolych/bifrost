@@ -28,6 +28,23 @@ def test_application_theme_stylesheets_are_distinct():
     assert "#ffff00" in styles["High Contrast"]
 
 
+def test_application_theme_covers_common_qt_surfaces():
+    from core.styles import get_theme_stylesheet
+
+    style = get_theme_stylesheet("Breeze")
+
+    for selector in (
+        "QScrollArea",
+        "QAbstractScrollArea",
+        "QToolTip",
+        "QHeaderView::section",
+        "QLineEdit:disabled",
+        "QTableCornerButton::section",
+        "QCheckBox::indicator",
+    ):
+        assert selector in style
+
+
 def test_settings_dialog_uses_central_application_theme_names(qapp):
     from core.styles import THEME_NAMES
     from widgets.settings_dialog import SettingsDialog

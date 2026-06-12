@@ -26,7 +26,7 @@ def get_high_contrast_theme() -> str:
 
 def _theme_stylesheet(t: AppTheme) -> str:
     return f"""
-        QMainWindow, QDialog {{
+        QMainWindow, QDialog, QScrollArea, QAbstractScrollArea {{
             background-color: {t.window};
             color: {t.text};
         }}
@@ -97,6 +97,12 @@ def _theme_stylesheet(t: AppTheme) -> str:
             background-color: {t.selection};
             color: {t.text};
         }}
+        QToolTip {{
+            background-color: {t.surface};
+            color: {t.text};
+            border: 1px solid {t.border};
+            padding: 4px;
+        }}
         QSplitter::handle {{
             background-color: {t.border};
         }}
@@ -124,6 +130,12 @@ def _theme_stylesheet(t: AppTheme) -> str:
             background: {t.surface};
             color: {t.text};
         }}
+        QHeaderView::section {{
+            background-color: {t.panel};
+            color: {t.text};
+            border: 1px solid {t.border};
+            padding: 4px;
+        }}
         QGroupBox {{
             border: 1px solid {t.border};
             border-radius: 4px;
@@ -148,6 +160,11 @@ def _theme_stylesheet(t: AppTheme) -> str:
             border-radius: 3px;
             padding: 3px;
         }}
+        QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled,
+        QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{
+            background-color: {t.surface_alt};
+            color: {t.muted};
+        }}
         QTreeWidget::item, QListWidget::item {{
             padding: 2px;
         }}
@@ -170,6 +187,10 @@ def _theme_stylesheet(t: AppTheme) -> str:
             color: {t.text};
             selection-background-color: {t.selection};
         }}
+        QTableCornerButton::section {{
+            background-color: {t.panel};
+            border: 1px solid {t.border};
+        }}
         QPushButton {{
             background-color: {t.panel_alt};
             color: {t.text};
@@ -191,6 +212,13 @@ def _theme_stylesheet(t: AppTheme) -> str:
         }}
         QCheckBox, QRadioButton, QLabel {{
             color: {t.text};
+        }}
+        QCheckBox::indicator, QRadioButton::indicator {{
+            border: 1px solid {t.border};
+            background-color: {t.surface};
+        }}
+        QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+            background-color: {t.accent};
         }}
         QSlider::groove:horizontal {{
             height: 5px;
