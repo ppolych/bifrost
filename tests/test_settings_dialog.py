@@ -201,6 +201,7 @@ def test_application_theme_stylesheets_are_distinct():
 
     styles = {name: get_theme_stylesheet(name) for name in THEME_NAMES}
 
+    assert "Bright (MobaXterm style)" in THEME_NAMES
     assert "Nord" in THEME_NAMES
     assert "Dracula" in THEME_NAMES
     assert "Gruvbox Dark" in THEME_NAMES
@@ -209,6 +210,7 @@ def test_application_theme_stylesheets_are_distinct():
     assert "Graphite" in THEME_NAMES
     assert "Breeze" in THEME_NAMES
     assert len(set(styles.values())) == len(THEME_NAMES)
+    assert "#2f86c7" in styles["Bright (MobaXterm style)"]
     assert "#f5f6f8" in styles["Light"]
     assert "#3daee9" in styles["Breeze"]
     assert "#eee8d5" in styles["Solarized"]
