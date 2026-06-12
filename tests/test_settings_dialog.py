@@ -207,8 +207,10 @@ def test_application_theme_stylesheets_are_distinct():
     assert "One Dark" in THEME_NAMES
     assert "Tokyo Night" in THEME_NAMES
     assert "Graphite" in THEME_NAMES
+    assert "Breeze" in THEME_NAMES
     assert len(set(styles.values())) == len(THEME_NAMES)
     assert "#f5f6f8" in styles["Light"]
+    assert "#3daee9" in styles["Breeze"]
     assert "#eee8d5" in styles["Solarized"]
     assert "#88c0d0" in styles["Nord"]
     assert "#bd93f9" in styles["Dracula"]
