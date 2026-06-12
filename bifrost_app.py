@@ -4,6 +4,9 @@ import json
 import logging
 import os
 import platform
+import posixpath
+import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -49,6 +52,35 @@ from widgets.app_menus import setup_app_menus
 from widgets.credential_prompt import CredentialPrompt
 from widgets.tool_dialogs import run_tool
 from widgets.vnc_viewer import VncViewer
+
+
+_LOCAL_FILENAME_UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def _remote_display_name(remote_path: str, default: str = "file") -> str:
+    """Return the leaf name of a remote POSIX path on every local OS."""
+    name = posixpath.basename((remote_path or "").rstrip("/"))
+    return name or default
+
+
+def _safe_temp_suffix(remote_path: str) -> str:
+    """Build a suffix safe for tempfile paths on Linux, Windows, and macOS."""
+    name = _remote_display_name(remote_path)
+    return "-" + (_LOCAL_FILENAME_UNSAFE.sub("_", name).strip(" .") or "file")
+
+
+def _split_user_command(command: str) -> list[str]:
+    """Split a user-entered command using the local platform's quoting rules."""
+    if os.name == "nt":
+        return [_strip_outer_quotes(part) for part in shlex.split(command, posix=False)]
+    return shlex.split(command)
+
+
+def _strip_outer_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
 
 class BifrostApp(QMainWindow):
     def __init__(self, is_detached=False, settings=None):
@@ -645,18 +677,17 @@ class BifrostApp(QMainWindow):
         To push edits back to the remote, the user uses the SFTP browser's
         Upload action.
         """
-        import shlex
-        import subprocess
         import tempfile
 
         sftp = self.sidebar.sftp_widget.sftp
         local_path: str | None = None
+        remote_name = _remote_display_name(remote_path, "Editor")
 
         if sftp is not None:
             try:
                 fd, local_path = tempfile.mkstemp(
                     prefix="bifrost-",
-                    suffix="-" + (os.path.basename(remote_path) or "file"),
+                    suffix=_safe_temp_suffix(remote_path),
                 )
                 os.close(fd)
                 sftp.get(remote_path, local_path)
@@ -665,13 +696,13 @@ class BifrostApp(QMainWindow):
                 local_path = None
                 editor = MobaEditor()
                 editor.set_content(f"# Failed to fetch {remote_path}:\n# {e}\n")
-                self.tabs.addTab(editor, f"📝 {os.path.basename(remote_path) or 'Editor'}")
+                self.tabs.addTab(editor, f"📝 {remote_name}")
                 self.tabs.setCurrentIndex(self.tabs.count() - 1)
                 return
 
         ext_cmd = (self.settings.get("default_editor_command") or "").strip()
         if ext_cmd and local_path:
-            argv = shlex.split(ext_cmd) + [local_path]
+            argv = _split_user_command(ext_cmd) + [local_path]
             try:
                 subprocess.Popen(argv)
                 self.status_bar.showMessage(
@@ -689,7 +720,7 @@ class BifrostApp(QMainWindow):
             editor.set_content(
                 f"# {remote_path}\n# (No SFTP connection — open a local file via Save As to start editing.)\n",
             )
-        self.tabs.addTab(editor, f"📝 {os.path.basename(remote_path) or 'Editor'}")
+        self.tabs.addTab(editor, f"📝 {remote_name}")
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
 
     def _download_remote_temp(self, remote_path: str) -> str | None:
@@ -700,7 +731,7 @@ class BifrostApp(QMainWindow):
             return None
         fd, local_path = tempfile.mkstemp(
             prefix="bifrost-",
-            suffix="-" + (os.path.basename(remote_path) or "file"),
+            suffix=_safe_temp_suffix(remote_path),
         )
         os.close(fd)
         try:
@@ -714,9 +745,7 @@ class BifrostApp(QMainWindow):
         return local_path
 
     def _open_local_with_command(self, local_path: str, command: str, label: str) -> bool:
-        import shlex
-
-        argv = shlex.split(command) + [local_path]
+        argv = _split_user_command(command) + [local_path]
         try:
             subprocess.Popen(argv)
         except OSError as e:
@@ -742,7 +771,7 @@ class BifrostApp(QMainWindow):
             editor.open_path(local_path)
         else:
             editor.set_content(f"# {remote_path}\n")
-        self.tabs.addTab(editor, f"Editor: {os.path.basename(remote_path) or 'remote file'}")
+        self.tabs.addTab(editor, f"Editor: {_remote_display_name(remote_path, 'remote file')}")
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
 
     def open_file_with_command(self, remote_path: str, command: str):
@@ -763,7 +792,10 @@ class BifrostApp(QMainWindow):
             QMessageBox.warning(self, "Open with system default failed", str(e))
             return
         if local_path and QDesktopServices.openUrl(QUrl.fromLocalFile(local_path)):
-            self.status_bar.showMessage(f"Opened {os.path.basename(remote_path)} with system default", 4000)
+            self.status_bar.showMessage(
+                f"Opened {_remote_display_name(remote_path)} with system default",
+                4000,
+            )
         elif local_path:
             QMessageBox.warning(self, "Open with system default failed", local_path)
 
