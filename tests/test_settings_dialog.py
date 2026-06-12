@@ -67,6 +67,27 @@ def test_session_dialog_uses_central_color_scheme_names(qapp):
     assert names == scheme_names()
 
 
+def test_session_dialog_rdp_port_round_trip(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog()
+    dlg.proto_tabs.setCurrentWidget(dlg.rdp_tab)
+    assert dlg.rdp_port_input.text() == "3389"
+
+    dlg.rdp_host_input.setText("rdp.example.com")
+    dlg.rdp_port_input.setText("3390")
+    data = dlg.get_data()
+    assert data["type"] == "RDP"
+    assert data["host"] == "rdp.example.com"
+    assert data["port"] == "3390"
+    assert data["name"] == "rdp rdp.example.com:3390"
+
+    dlg2 = SessionDialog(session=data)
+    assert dlg2.proto_tabs.currentWidget() is dlg2.rdp_tab
+    assert dlg2.rdp_host_input.text() == "rdp.example.com"
+    assert dlg2.rdp_port_input.text() == "3390"
+
+
 def test_apply_scheme_mutates_settings():
     from core.color_schemes import apply_scheme
 

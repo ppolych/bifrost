@@ -201,7 +201,10 @@ class SessionDialog(QDialog):
         # RDP sub-tab (placeholder, backend not implemented)
         self.rdp_tab = QWidget()
         self.rdp_layout = QFormLayout(self.rdp_tab)
-        self.rdp_layout.addRow("Host:", QLineEdit())
+        self.rdp_host_input = QLineEdit("127.0.0.1")
+        self.rdp_port_input = QLineEdit("3389")
+        self.rdp_layout.addRow("Host:", self.rdp_host_input)
+        self.rdp_layout.addRow("Port:", self.rdp_port_input)
         self.proto_tabs.addTab(self.rdp_tab, "RDP")
 
         # WSL sub-tab
@@ -350,6 +353,9 @@ class SessionDialog(QDialog):
         if proto == "VNC":
             self.vnc_host_input.setText(session.get("host", "127.0.0.1"))
             self.vnc_port_input.setText(str(session.get("port", "5900") or "5900"))
+        if proto == "RDP":
+            self.rdp_host_input.setText(session.get("host", "127.0.0.1"))
+            self.rdp_port_input.setText(str(session.get("port", "3389") or "3389"))
         if proto == "WSL":
             distro = session.get("distro") or "(default)"
             idx = self.wsl_distro.findText(distro)
@@ -396,6 +402,17 @@ class SessionDialog(QDialog):
             return {
                 "name": name,
                 "type": "VNC",
+                "host": host,
+                "port": port,
+                "overrides": overrides,
+            }
+        if proto == "RDP":
+            host = self.rdp_host_input.text().strip() or "127.0.0.1"
+            port = self.rdp_port_input.text().strip() or "3389"
+            name = self.name_input.text().strip() or f"rdp {host}:{port}"
+            return {
+                "name": name,
+                "type": "RDP",
                 "host": host,
                 "port": port,
                 "overrides": overrides,
