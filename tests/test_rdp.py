@@ -55,6 +55,34 @@ def test_rdp_command_uses_open_url_on_macos():
     assert command == ["/usr/bin/open", "rdp://full%20address=s:mac-host:3389"]
 
 
+def test_rdp_client_status_reports_linux_clients():
+    from core.rdp import rdp_client_status
+
+    def fake_which(name):
+        return f"/usr/bin/{name}" if name in {"xfreerdp", "rdesktop"} else None
+
+    assert rdp_client_status(system="Linux", which=fake_which) == "xfreerdp, rdesktop"
+
+
+def test_rdp_client_status_reports_missing_linux_clients():
+    from core.rdp import rdp_client_status
+
+    assert rdp_client_status(system="Linux", which=lambda name: None) == "not found"
+
+
+def test_rdp_client_status_reports_platform_defaults():
+    from core.rdp import rdp_client_status
+
+    assert rdp_client_status(system="Windows", which=lambda name: None) == "mstsc (expected)"
+    assert (
+        rdp_client_status(
+            system="Darwin",
+            which=lambda name: "/usr/bin/open" if name == "open" else None,
+        )
+        == "Microsoft Remote Desktop URL handler via open"
+    )
+
+
 def test_session_activation_routes_rdp(qapp):
     from bifrost_app import BifrostApp
 

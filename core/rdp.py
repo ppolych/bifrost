@@ -69,6 +69,32 @@ def build_rdp_command(
     )
 
 
+def available_rdp_clients(
+    *,
+    system: str | None = None,
+    which=shutil.which,
+) -> list[str]:
+    system_name = system or platform.system()
+    if system_name == "Windows":
+        return ["mstsc"] if (which("mstsc.exe") or which("mstsc")) else ["mstsc (expected)"]
+    if system_name == "Darwin":
+        return ["Microsoft Remote Desktop URL handler via open"] if which("open") else []
+
+    clients = []
+    if which("xfreerdp"):
+        clients.append("xfreerdp")
+    if which("rdesktop"):
+        clients.append("rdesktop")
+    return clients
+
+
+def rdp_client_status(*, system: str | None = None, which=shutil.which) -> str:
+    clients = available_rdp_clients(system=system, which=which)
+    if clients:
+        return ", ".join(clients)
+    return "not found"
+
+
 def launch_rdp_session(session: dict) -> list[str]:
     command = build_rdp_command(session)
     try:

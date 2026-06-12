@@ -42,7 +42,7 @@ from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
 from core.logging_setup import _log_path, configure_logging
 from core.mobaxterm_import import parse_mobaxterm_file
-from core.rdp import RdpLaunchError, launch_rdp_session
+from core.rdp import RdpLaunchError, launch_rdp_session, rdp_client_status
 from core.ssh_config_import import parse_ssh_config_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
@@ -604,6 +604,7 @@ class BifrostApp(QMainWindow):
             f"Log file: {_log_path()}",
             f"Keyring available: {'yes' if credentials.is_available() else 'no'}",
             f"SSH agent: {ssh_agent}",
+            f"RDP client: {rdp_client_status()}",
             f"Git: {shutil.which('git') or 'not found'}",
             f"Open tabs: {self.tabs.count() if hasattr(self, 'tabs') else 0}",
         ]
