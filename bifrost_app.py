@@ -30,6 +30,7 @@ from widgets.terminal_container import TerminalContainer
 from widgets.toolbar import MainToolBar
 from widgets.session_dialog import SessionDialog
 from widgets.settings_dialog import SettingsDialog
+from widgets.command_palette import CommandPalette, PaletteEntry
 from widgets.editor import MobaEditor
 from widgets.dashboard import Dashboard
 from widgets.remote_monitor import RemoteMonitorWidget
@@ -40,6 +41,7 @@ from core.host_key_prompt import HostKeyPrompter, QtHostKeyPolicy
 from core.icons import app_icon
 from core.logging_setup import _log_path, configure_logging
 from core.mobaxterm_import import parse_mobaxterm_file
+from core.ssh_config_import import parse_ssh_config_file
 from core.persistence import SessionManager
 from core.macro_engine import MacroEngine
 from core.snippets import SnippetManager
@@ -68,6 +70,20 @@ def _safe_temp_suffix(remote_path: str) -> str:
     """Build a suffix safe for tempfile paths on Linux, Windows, and macOS."""
     name = _remote_display_name(remote_path)
     return "-" + (_LOCAL_FILENAME_UNSAFE.sub("_", name).strip(" .") or "file")
+
+
+def _iter_sessions(node, prefix: str = ""):
+    if isinstance(node, list):
+        for session in node:
+            if isinstance(session, dict):
+                name = session.get("name") or "session"
+                yield f"{prefix}/{name}".strip("/"), session
+        return
+    if not isinstance(node, dict):
+        return
+    for name, child in node.items():
+        child_prefix = f"{prefix}/{name}".strip("/")
+        yield from _iter_sessions(child, child_prefix)
 
 
 def _split_user_command(command: str) -> list[str]:
@@ -242,6 +258,8 @@ class BifrostApp(QMainWindow):
         
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self.search_shortcut.activated.connect(self.toggle_terminal_search)
+        self.command_palette_shortcut = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
+        self.command_palette_shortcut.activated.connect(self.open_command_palette)
         
         # Re-apply visuals now that self.tabs exists so tab_position takes effect.
         self.apply_global_visuals()
@@ -485,6 +503,35 @@ class BifrostApp(QMainWindow):
                         term.apply_settings()
             self.status_bar.showMessage("Settings applied.")
 
+    def open_command_palette(self):
+        dialog = CommandPalette(self._command_palette_entries(), self)
+        dialog.exec()
+
+    def _command_palette_entries(self) -> list[PaletteEntry]:
+        entries = [
+            PaletteEntry("Session: Start local terminal", lambda: self.new_terminal_tab("Local Shell")),
+            PaletteEntry("Session: New session...", self.open_session_dialog),
+            PaletteEntry("Session: Import OpenSSH config...", self.import_ssh_config_sessions),
+            PaletteEntry("Connections: Reconnect current tab", self.reconnect_current_tab),
+            PaletteEntry("Connections: Reconnect all disconnected", self._reconnect_all_disconnected),
+            PaletteEntry("Connections: Open SFTP here", self.attach_sftp_for_current_tab),
+            PaletteEntry("View: Toggle sidebar", self.sidebar.toggle_collapse),
+            PaletteEntry("View: Toggle SFTP pane", self.toggle_sftp_pane),
+            PaletteEntry("Tools: Settings...", self.open_settings_dialog),
+            PaletteEntry("Tools: Diagnostics...", self.show_diagnostics),
+            PaletteEntry("Workspaces: Save current SSH tabs...", self.save_current_workspace),
+            PaletteEntry("Workspaces: Open workspace...", self.open_workspace_profile),
+        ]
+        for path, session in _iter_sessions(self.session_manager.sessions):
+            name = session.get("name") or path
+            entries.append(
+                PaletteEntry(
+                    f"Open session: {name} ({path})",
+                    lambda s=session: self.on_session_activated(s),
+                )
+            )
+        return entries
+
     def show_diagnostics(self):
         text = self.diagnostics_text()
         box = QMessageBox(self)
@@ -582,6 +629,38 @@ class BifrostApp(QMainWindow):
         message += f" into {imported_group}"
         if result.skipped:
             message += f" ({result.skipped} unsupported skipped)"
+        self.status_bar.showMessage(message, 6000)
+
+    def import_ssh_config_sessions(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import OpenSSH config", os.path.expanduser("~/.ssh/config"),
+            "SSH config (config);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            result = parse_ssh_config_file(path)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, "SSH config import failed", str(e))
+            return
+        if result.imported == 0:
+            QMessageBox.information(
+                self,
+                "No sessions imported",
+                "No concrete Host entries were found in that SSH config.",
+            )
+            return
+        imported_group = ""
+        for group_name, data in result.tree.items():
+            imported_group = self.session_manager.import_group(group_name, data)
+        self.sidebar.refresh_sessions()
+        self._refresh_credentials_view()
+        message = f"Imported {result.imported} SSH config session"
+        if result.imported != 1:
+            message += "s"
+        message += f" into {imported_group}"
+        if result.skipped:
+            message += f" ({result.skipped} wildcard/skipped)"
         self.status_bar.showMessage(message, 6000)
 
     def show_dashboard(self):

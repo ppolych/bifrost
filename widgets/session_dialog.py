@@ -8,6 +8,13 @@ from core import wsl
 from core.color_schemes import scheme_names
 
 
+TMUX_COMMANDS = {
+    "Attach or create": "tmux new-session -A -s main",
+    "Attach existing": "tmux attach-session",
+    "New named session": "tmux new-session -s main",
+}
+
+
 class SessionDialog(QDialog):
     def __init__(self, parent=None, session: dict | None = None):
         super().__init__(parent)
@@ -40,7 +47,15 @@ class SessionDialog(QDialog):
 
         self.command_input = QLineEdit()
         self.command_input.setPlaceholderText("Optional command sent after SSH shell opens")
-        self.ssh_layout.addRow("Startup command:", self.command_input)
+        command_row = QHBoxLayout()
+        command_row.addWidget(self.command_input, 1)
+        self.tmux_preset = QComboBox()
+        self.tmux_preset.addItem("tmux preset...", "")
+        for label, command in TMUX_COMMANDS.items():
+            self.tmux_preset.addItem(label, command)
+        self.tmux_preset.currentIndexChanged.connect(self._apply_tmux_preset)
+        command_row.addWidget(self.tmux_preset)
+        self.ssh_layout.addRow("Startup command:", command_row)
 
         self.auth_method = QComboBox()
         self.auth_method.addItems(["SSH agent", "Private key", "Password"])
@@ -272,6 +287,12 @@ class SessionDialog(QDialog):
         self.cert_row.setEnabled(is_key)
         self.passphrase_note.setVisible(is_key)
         self.password_note.setVisible(is_pwd)
+
+    def _apply_tmux_preset(self, _index: int):
+        command = self.tmux_preset.currentData()
+        if command:
+            self.command_input.setText(command)
+            self.tmux_preset.setCurrentIndex(0)
 
     def _auth_value(self) -> str:
         return {

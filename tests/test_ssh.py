@@ -425,6 +425,18 @@ def test_session_dialog_loads_existing_ssh_session(qapp):
     assert data["command"] == "tmux attach || tmux"
 
 
+def test_session_dialog_tmux_preset_sets_startup_command(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog()
+    idx = dlg.tmux_preset.findText("Attach or create")
+
+    dlg.tmux_preset.setCurrentIndex(idx)
+
+    assert dlg.command_input.text() == "tmux new-session -A -s main"
+    assert dlg.tmux_preset.currentIndex() == 0
+
+
 def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
     from widgets.session_dialog import SessionDialog
 
