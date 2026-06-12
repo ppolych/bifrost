@@ -14,6 +14,8 @@ def test_workspace_manager_saves_sanitized_profiles(tmp_path, monkeypatch):
                 "user": "admin",
                 "password": "secret",
                 "passphrase": "also-secret",
+                "token": "token-secret",
+                "nested": {"api_key": "key-secret", "keep": "yes"},
                 "tunnels": ["L 127.0.0.1:15432 db.internal:5432"],
             }
         ],
@@ -25,6 +27,9 @@ def test_workspace_manager_saves_sanitized_profiles(tmp_path, monkeypatch):
     assert saved[0]["tunnels"] == ["L 127.0.0.1:15432 db.internal:5432"]
     assert "password" not in saved[0]
     assert "passphrase" not in saved[0]
+    assert "token" not in saved[0]
+    assert "api_key" not in saved[0]["nested"]
+    assert saved[0]["nested"]["keep"] == "yes"
 
     saved[0]["host"] = "changed"
     assert manager.get("Prod")[0]["host"] == "db.internal"
@@ -86,6 +91,29 @@ def test_workspace_manager_reads_legacy_list_profiles(tmp_path, monkeypatch):
 
     assert manager.get("Legacy")[0]["host"] == "legacy.internal"
     assert manager.get_profile("Legacy")["layout"] == {}
+
+
+def test_workspace_manager_sanitizes_loaded_profiles(tmp_path, monkeypatch):
+    import core.workspaces as workspaces
+
+    monkeypatch.setattr(workspaces, "config_path", lambda name: str(tmp_path / name))
+
+    manager = workspaces.WorkspaceManager()
+    manager.profiles["Unsafe"] = {
+        "sessions": [{
+            "name": "unsafe",
+            "type": "SSH",
+            "host": "h",
+            "token": "secret",
+            "nested": {"private_key": "secret", "keep": "yes"},
+        }],
+    }
+
+    session = manager.get_profile("Unsafe")["sessions"][0]
+
+    assert "token" not in session
+    assert "private_key" not in session["nested"]
+    assert session["nested"]["keep"] == "yes"
 
 
 def test_workspace_summary_counts_types_and_clustered():

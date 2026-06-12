@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import QAbstractScrollArea, QApplication
 
 from core.platform_utils import default_monospace_font
 from core.terminal_backend import TerminalBackend, TerminalReader
+from widgets.sftp_utils import safe_local_name
 from widgets.terminal_clipboard import TerminalClipboardMixin
 from widgets.terminal_keyboard import TerminalKeyboardMixin
 from widgets.terminal_paint import TerminalPaintMixin
@@ -72,8 +73,9 @@ class TerminalWidget(
             log_dir = os.path.expanduser(self.settings.get("log_directory") or "logs")
             try:
                 os.makedirs(log_dir, exist_ok=True)
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                log_path = os.path.join(log_dir, f"{log_name}_{timestamp}.log")
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                safe_name = safe_local_name(log_name, default="session")
+                log_path = os.path.join(log_dir, f"{safe_name}_{timestamp}.log")
                 self.log_file = open(log_path, "a", encoding="utf-8")
             except OSError:
                 log.exception("Failed to open session log file")

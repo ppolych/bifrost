@@ -39,7 +39,9 @@ class TerminalContainer(QWidget):
         self.primary_terminal = self.add_terminal(self.main_splitter, command, backend=backend)
 
     def add_terminal(self, parent_splitter, command=None, backend=None):
-        term = TerminalWidget(command=command, settings=self.settings, backend=backend)
+        term = TerminalWidget(
+            command=command, settings=self.settings, log_name=self.name, backend=backend
+        )
         if self.key_callback:
             term.key_pressed.connect(self.key_callback)
         term.detach_requested.connect(lambda: self.detach_requested.emit(self))

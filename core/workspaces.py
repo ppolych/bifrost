@@ -6,12 +6,12 @@ import copy
 import logging
 
 from core.platform_utils import atomic_write_json, config_path, load_json
+from core.security import sanitize_for_export
 
 log = logging.getLogger(__name__)
 
 WORKSPACES_FILE = "workspaces.json"
 WORKSPACE_SCHEMA_VERSION = 2
-SECRET_KEYS = {"password", "passphrase"}
 
 
 class WorkspaceManager:
@@ -66,7 +66,7 @@ class WorkspaceManager:
             version = 1
         return {
             "version": copy.deepcopy(version),
-            "sessions": [copy.deepcopy(s) for s in sessions if isinstance(s, dict)],
+            "sessions": [_sanitize_session(s) for s in sessions if isinstance(s, dict)],
             "layout": _sanitize_layout(layout if isinstance(layout, dict) else {}),
         }
 
@@ -93,11 +93,7 @@ def workspace_summary(sessions: list[dict]) -> str:
 
 
 def _sanitize_session(session: dict) -> dict:
-    cleaned = {}
-    for key, value in session.items():
-        if key in SECRET_KEYS:
-            continue
-        cleaned[key] = copy.deepcopy(value)
+    cleaned = sanitize_for_export(session)
     cleaned.setdefault("type", "SSH")
     cleaned.setdefault("name", cleaned.get("host") or "SSH session")
     return cleaned

@@ -247,3 +247,34 @@ def test_terminal_widget_feeds_bytes_into_screen(qapp):
     term._on_data(b"hello")
     assert "".join(term.screen.buffer[0][i].data for i in range(5)) == "hello"
     term.close()
+
+
+def test_terminal_logs_use_safe_session_name(qapp, tmp_path):
+    from core.settings_store import default_settings
+    from widgets.terminal_container import TerminalContainer
+
+    class NoopBackend:
+        def start(self): pass
+        def read(self, size=4096): return b""
+        def write(self, data): pass
+        def set_winsize(self, rows, cols): pass
+        def close(self): pass
+
+    settings = default_settings()
+    settings["auto_log"] = True
+    settings["log_directory"] = str(tmp_path)
+
+    container = TerminalContainer("prod/db:1", settings=settings, backend=NoopBackend())
+    log_file = container.primary_terminal.log_file
+
+    assert log_file is not None
+    assert os.path.basename(log_file.name).startswith("prod_db_1_")
+    assert not (tmp_path / "prod").exists()
+
+    duplicate = TerminalContainer("prod/db:1", settings=settings, backend=NoopBackend())
+    duplicate_log_file = duplicate.primary_terminal.log_file
+    assert duplicate_log_file is not None
+    assert duplicate_log_file.name != log_file.name
+
+    duplicate.close()
+    container.close()
