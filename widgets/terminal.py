@@ -63,6 +63,8 @@ ANSI_COLORS = {
 DEFAULT_FG = "#d3d7cf"
 DEFAULT_BG = "#000000"
 DECCKM_PRIVATE_MODE = 1 << 5  # DEC application cursor keys, set by CSI ? 1 h.
+BRACKETED_PASTE_ENABLE = b"\x1b[?2004h"
+BRACKETED_PASTE_DISABLE = b"\x1b[?2004l"
 
 
 def _resolve_color(value: str, default: str, bold: bool = False) -> QColor:
@@ -166,6 +168,7 @@ class TerminalWidget(QAbstractScrollArea):
 
         self._last_search_text = ""
         self._search_index = -1
+        self._bracketed_paste = False
 
         self._apply_font_metrics()
         self.apply_settings()
@@ -241,6 +244,7 @@ class TerminalWidget(QAbstractScrollArea):
     # ----- data in / out -----
 
     def _on_data(self, data: bytes):
+        self._track_terminal_modes(data)
         try:
             self.stream.feed(data)
         except Exception:
@@ -254,6 +258,12 @@ class TerminalWidget(QAbstractScrollArea):
                 log.exception("session log write failed")
         self._update_scrollbar()
         self.viewport().update()
+
+    def _track_terminal_modes(self, data: bytes) -> None:
+        if BRACKETED_PASTE_ENABLE in data:
+            self._bracketed_paste = True
+        if BRACKETED_PASTE_DISABLE in data:
+            self._bracketed_paste = False
 
     def _on_backend_closed(self):
         self._append_error_text("\r\n[session closed]\r\n")
@@ -915,7 +925,12 @@ class TerminalWidget(QAbstractScrollArea):
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
-        self.write_to_backend(text)
+        self.write_to_backend(self._format_paste(text))
+
+    def _format_paste(self, text: str) -> str:
+        if self._bracketed_paste:
+            return f"\x1b[200~{text}\x1b[201~"
+        return text
 
     def _confirm_paste_required(self, text: str) -> bool:
         if self.settings.get("confirm_multiline_paste", True) and "\n" in text:

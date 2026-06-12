@@ -104,6 +104,22 @@ def test_terminal_paste_confirmation_predicate(qapp):
     t.close()
 
 
+def test_bracketed_paste_wraps_only_when_terminal_requests_it(qapp):
+    from widgets.terminal import TerminalWidget
+
+    t = TerminalWidget(command=["true"])
+    try:
+        assert t._format_paste("echo hi\n") == "echo hi\n"
+
+        t._track_terminal_modes(b"\x1b[?2004h")
+        assert t._format_paste("echo hi\n") == "\x1b[200~echo hi\n\x1b[201~"
+
+        t._track_terminal_modes(b"\x1b[?2004l")
+        assert t._format_paste("echo hi\n") == "echo hi\n"
+    finally:
+        t.close()
+
+
 def test_keepalive_flows_into_credentials():
     from core.ssh_backend import SshCredentials
 
