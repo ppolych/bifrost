@@ -154,6 +154,9 @@ class BifrostApp(
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.remote_monitor = RemoteMonitorWidget(self)
+        self.remote_monitor.remote_ops_requested.connect(
+            lambda: self.sidebar.tabs.setCurrentWidget(self.sidebar.remote_ops_widget)
+        )
         self.status_bar.addWidget(self.remote_monitor, 1)
         self.ip_label = QLabel(f"Local IP: {self.get_local_ip()}")
         self.status_bar.addPermanentWidget(self.ip_label)

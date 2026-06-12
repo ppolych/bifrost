@@ -3,9 +3,16 @@ from __future__ import annotations
 import threading
 import time
 
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from core.remote_monitor_health import (
+    disk_worst_percent,
+    freshness_text,
+    health_color,
+    is_stale,
+    percent_value,
+)
 from core.remote_monitor import (
     REMOTE_MONITOR_COMMAND,
     format_bytes,
@@ -13,10 +20,12 @@ from core.remote_monitor import (
     format_remote_monitor_details,
     parse_remote_monitor_output,
 )
+from widgets.remote_monitor_actions import RemoteMonitorActionsMixin
 
 
-class RemoteMonitorWidget(QWidget):
+class RemoteMonitorWidget(RemoteMonitorActionsMixin, QWidget):
     metrics_ready = pyqtSignal(object, dict)
+    remote_ops_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -26,6 +35,10 @@ class RemoteMonitorWidget(QWidget):
         self._last_metrics: dict[str, object] | None = None
         self._last_down_rate: float | None = None
         self._last_up_rate: float | None = None
+        self._last_updated_at: float | None = None
+        self.paused = False
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
@@ -38,6 +51,7 @@ class RemoteMonitorWidget(QWidget):
         self.down_label = self._make_cell("DN: --", "#60a5fa")
         self.uptime_label = self._make_cell("Uptime: --", "#d9e2ec")
         self.disk_label = self._make_cell("Disk: --", "#f59e0b")
+        self.fresh_label = self._make_cell("not updated", "#cccccc")
         for label in (
             self.host_label,
             self.cpu_label,
@@ -46,6 +60,7 @@ class RemoteMonitorWidget(QWidget):
             self.down_label,
             self.uptime_label,
             self.disk_label,
+            self.fresh_label,
         ):
             layout.addWidget(label)
         layout.addStretch()
@@ -67,15 +82,17 @@ class RemoteMonitorWidget(QWidget):
             return
         self.host_label.setText("Remote: connecting")
         self._set_tooltip(status="connecting")
-        self._timer.start()
+        if not self.paused:
+            self._timer.start()
         self._poll()
 
     def _make_cell(self, text: str, color: str) -> QLabel:
         label = QLabel(text)
-        label.setStyleSheet(
-            f"QLabel {{ color: {color}; padding: 1px 7px; font-size: 10px; }}"
-        )
+        self._set_cell_color(label, color)
         return label
+
+    def _set_cell_color(self, label: QLabel, color: str) -> None:
+        label.setStyleSheet(f"QLabel {{ color: {color}; padding: 1px 7px; font-size: 10px; }}")
 
     def _set_idle(self) -> None:
         self._last_metrics = None
@@ -88,6 +105,9 @@ class RemoteMonitorWidget(QWidget):
         self.down_label.setText("DN: --")
         self.uptime_label.setText("Uptime: --")
         self.disk_label.setText("Disk: --")
+        self.fresh_label.setText("not updated")
+        self.paused = False
+        self._last_updated_at = None
         self._set_tooltip(status="idle")
 
     def _set_tooltip(self, status: str | None = None) -> None:
@@ -107,6 +127,7 @@ class RemoteMonitorWidget(QWidget):
                 self.down_label,
                 self.uptime_label,
                 self.disk_label,
+                self.fresh_label,
             ):
                 label.setToolTip(tooltip)
             return
@@ -153,6 +174,7 @@ class RemoteMonitorWidget(QWidget):
         disks = metrics.get("disk") or []
         disk_lines = ["Disk usage", *(str(disk) for disk in disks)] if disks else ["Disk usage", "--"]
         self.disk_label.setToolTip("\n".join(disk_lines))
+        self.fresh_label.setToolTip(tooltip)
 
     def _format_net_total(self, index: int) -> str:
         net = self._last_metrics.get("net") if self._last_metrics else None
@@ -162,7 +184,8 @@ class RemoteMonitorWidget(QWidget):
 
     def _poll(self) -> None:
         backend = self._backend
-        if backend is None or self._polling:
+        self._update_freshness()
+        if self.paused or backend is None or self._polling:
             return
         if getattr(backend, "_closed", False) or not backend.wait_ready(timeout=0):
             return
@@ -194,16 +217,21 @@ class RemoteMonitorWidget(QWidget):
         if metrics.get("error"):
             self._last_metrics = metrics
             self.host_label.setText("Remote: monitor error")
+            self._last_updated_at = time.monotonic()
+            self._update_freshness()
             self._set_tooltip()
             return
 
         self._last_metrics = metrics
+        self._last_updated_at = time.monotonic()
         self.host_label.setText(str(metrics.get("host") or "Remote"))
         self.cpu_label.setText(f"CPU: {metrics.get('cpu', '--')}")
         self.mem_label.setText(f"RAM: {metrics.get('mem', '--')}")
         self.uptime_label.setText(str(metrics.get("uptime") or "Uptime: --").replace("up ", ""))
         disks = metrics.get("disk") or []
         self.disk_label.setText("Disk: " + " ".join(disks[:3]) if disks else "Disk: --")
+        self._apply_health_colors(metrics)
+        self._update_freshness()
 
         net = metrics.get("net")
         if isinstance(net, tuple):
@@ -223,3 +251,17 @@ class RemoteMonitorWidget(QWidget):
             self.down_label.setText(f"DN: {format_rate(down_rate)}")
             self.up_label.setText(f"UP: {format_rate(up_rate)}")
         self._set_tooltip()
+
+    def _apply_health_colors(self, metrics: dict) -> None:
+        self._set_cell_color(self.cpu_label, health_color(percent_value(metrics.get("cpu"))))
+        self._set_cell_color(self.mem_label, health_color(percent_value(metrics.get("mem"))))
+        self._set_cell_color(self.disk_label, health_color(disk_worst_percent(metrics.get("disk"))))
+
+    def _update_freshness(self) -> None:
+        text = freshness_text(self._last_updated_at)
+        stale = is_stale(self._last_updated_at, self._timer.interval())
+        if stale:
+            text = "stale"
+        if self.paused:
+            text = f"paused, {text}"
+        self.fresh_label.setText(text)
