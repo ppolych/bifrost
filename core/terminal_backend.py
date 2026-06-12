@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -17,7 +18,7 @@ class TerminalBackend:
     """
 
     def __init__(self, command=None):
-        self.command = command or self._get_default_shell()
+        self.command = self._normalize_command(command)
         self.fd = None
         self.pid = None
         self._winpty = None
@@ -27,6 +28,18 @@ class TerminalBackend:
         if IS_WINDOWS:
             return ["cmd.exe"]
         return [os.environ.get("SHELL", "/bin/bash")]
+
+    def _normalize_command(self, command) -> list[str] | str:
+        if command is None:
+            return self._get_default_shell()
+        if isinstance(command, str):
+            return command if IS_WINDOWS else [command]
+        return [str(part) for part in command]
+
+    def _windows_cmdline(self) -> str:
+        if isinstance(self.command, str):
+            return self.command
+        return subprocess.list2cmdline(self.command)
 
     def start(self):
         if not IS_WINDOWS:
@@ -49,8 +62,7 @@ class TerminalBackend:
                 raise RuntimeError(
                     "pywinpty is required on Windows. Install it with `pip install pywinpty`."
                 ) from e
-            cmdline = " ".join(self.command) if isinstance(self.command, list) else self.command
-            self._winpty = PtyProcess.spawn(cmdline)
+            self._winpty = PtyProcess.spawn(self._windows_cmdline())
             self.pid = self._winpty.pid
 
     def read(self, size=4096):

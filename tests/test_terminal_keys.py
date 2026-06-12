@@ -84,3 +84,40 @@ def test_failed_backend_start_ignores_later_writes(qapp, monkeypatch):
         term.write_to_backend("copy attempt")
     finally:
         term.close()
+
+
+def test_terminal_backend_posix_string_command_is_not_split_into_chars(monkeypatch):
+    import core.terminal_backend as terminal_backend
+
+    monkeypatch.setattr(terminal_backend, "IS_WINDOWS", False)
+
+    backend = terminal_backend.TerminalBackend("/bin/zsh")
+
+    assert backend.command == ["/bin/zsh"]
+
+
+def test_terminal_backend_windows_cmdline_quotes_paths_with_spaces(monkeypatch):
+    import core.terminal_backend as terminal_backend
+
+    monkeypatch.setattr(terminal_backend, "IS_WINDOWS", True)
+
+    backend = terminal_backend.TerminalBackend([
+        r"C:\Program Files\Docker\docker.exe",
+        "exec",
+        "-it",
+        "container name",
+    ])
+
+    assert backend._windows_cmdline() == (
+        r'"C:\Program Files\Docker\docker.exe" exec -it "container name"'
+    )
+
+
+def test_terminal_backend_windows_string_command_is_preserved(monkeypatch):
+    import core.terminal_backend as terminal_backend
+
+    monkeypatch.setattr(terminal_backend, "IS_WINDOWS", True)
+
+    backend = terminal_backend.TerminalBackend(r"cmd.exe /C echo hi")
+
+    assert backend._windows_cmdline() == r"cmd.exe /C echo hi"
