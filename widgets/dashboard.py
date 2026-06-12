@@ -72,7 +72,9 @@ class Dashboard(QWidget):
             for s in recent_sessions:
                 self.recents_list.addItem(s)
         else:
-            self.recents_list.addItem("No recent sessions")
+            item = QListWidgetItem("No recent sessions")
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            self.recents_list.addItem(item)
             
         recents_vbox.addWidget(self.recents_list)
         main_layout.addWidget(recents_frame, 2)
@@ -80,4 +82,6 @@ class Dashboard(QWidget):
         self.layout.addLayout(main_layout)
 
     def on_recent_click(self, item):
+        if not item.flags() & Qt.ItemFlag.ItemIsEnabled:
+            return
         self.session_requested.emit(item.text())

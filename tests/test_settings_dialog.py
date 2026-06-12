@@ -95,6 +95,20 @@ def test_dashboard_has_no_pro_placeholder(qapp):
     assert "PRO" not in labels
 
 
+def test_dashboard_empty_recent_placeholder_is_not_actionable(qapp):
+    from widgets.dashboard import Dashboard
+
+    dashboard = Dashboard()
+    received = []
+    dashboard.session_requested.connect(received.append)
+
+    item = dashboard.recents_list.item(0)
+    dashboard.on_recent_click(item)
+
+    assert item.text() == "No recent sessions"
+    assert received == []
+
+
 def test_apply_scheme_mutates_settings():
     from core.color_schemes import apply_scheme
 
