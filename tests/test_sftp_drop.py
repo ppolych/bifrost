@@ -441,6 +441,32 @@ def test_transfer_thread_reports_eof_error(qapp, tmp_path):
     assert failures == ["EOFError"]
 
 
+def test_transfer_thread_does_not_report_success_after_cancel(qapp, tmp_path):
+    from widgets.sftp_browser import _TransferThread
+
+    local = tmp_path / "download.txt"
+
+    class FakeSftp:
+        def stat(self, remote_path):
+            return type("Attr", (), {"st_mode": 0o100644, "st_size": 4})()
+
+        def get(self, remote_path, local_path, callback=None):
+            if callback:
+                callback(4, 4)
+
+    thread = _TransferThread(FakeSftp(), "download", str(local), "/remote/download.txt")
+    done = []
+    cancelled = []
+    thread.finished_ok.connect(done.append)
+    thread.cancelled.connect(cancelled.append)
+
+    thread.cancel()
+    thread.run()
+
+    assert done == []
+    assert cancelled == ["Transfer cancelled"]
+
+
 def test_download_remote_folder_uses_directory_picker(browser, monkeypatch):
     from PyQt6.QtWidgets import QFileDialog
 
@@ -607,6 +633,28 @@ def test_detach_does_not_reopen_sftp_after_cancel_cleanup(browser, monkeypatch):
 
     assert reopened == []
     assert browser._transfer is None
+
+
+def test_stuck_cancelled_transfer_detaches_ui_and_reopens_sftp(browser, monkeypatch):
+    old_sftp = MagicMock()
+    new_sftp = MagicMock()
+    ssh_client = MagicMock()
+    ssh_client.open_sftp.return_value = new_sftp
+    transfer = MagicMock()
+    transfer.isRunning.return_value = True
+    browser._ssh_client = ssh_client
+    browser.sftp = old_sftp
+    browser._transfer = transfer
+    browser._last_transfer_cancelled = True
+    monkeypatch.setattr(browser, "_disconnect_transfer_signals", lambda t: None)
+    monkeypatch.setattr(browser, "_refresh", lambda: None)
+
+    browser._finish_stuck_cancelled_transfer(transfer)
+
+    assert browser._transfer is None
+    assert browser._last_transfer_cancelled is False
+    assert browser.sftp is new_sftp
+    assert not browser.cancel_btn.isEnabled()
 
 
 def test_upload_conflict_skip_apply_all(browser, monkeypatch):

@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Optional
 
 import paramiko
-from PyQt6.QtCore import QSize, Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -174,9 +174,11 @@ class _TransferThread(QThread):
                     self._emit_progress(0, total)
                     done = self._upload_dir(self.local_path, self.remote_path, done, total)
                     self._emit_progress(done, total)
+                    self._raise_if_cancelled()
                     self.finished_ok.emit(f"Uploaded folder {os.path.basename(self.local_path)}")
                 else:
                     self.sftp.put(self.local_path, self.remote_path, callback=self._callback)
+                    self._raise_if_cancelled()
                     self.finished_ok.emit(f"Uploaded {os.path.basename(self.local_path)}")
             else:
                 if self._remote_is_dir(self.remote_path):
@@ -185,9 +187,11 @@ class _TransferThread(QThread):
                     self._emit_progress(0, total)
                     done = self._download_dir(self.remote_path, self.local_path, done, total)
                     self._emit_progress(done, total)
+                    self._raise_if_cancelled()
                     self.finished_ok.emit(f"Downloaded folder {posixpath.basename(self.remote_path)}")
                 else:
                     self.sftp.get(self.remote_path, self.local_path, callback=self._callback)
+                    self._raise_if_cancelled()
                     self.finished_ok.emit(f"Downloaded {posixpath.basename(self.remote_path)}")
         except (EOFError, OSError, paramiko.SSHException) as e:
             if self._cancelled:
@@ -197,14 +201,16 @@ class _TransferThread(QThread):
                 self.failed.emit(str(e) or e.__class__.__name__)
 
     def _callback(self, done: int, total: int):
-        if self._cancelled:
-            raise OSError("Transfer cancelled")
+        self._raise_if_cancelled()
         self.progress.emit(done, total)
 
     def _emit_progress(self, done: int, total: int) -> None:
+        self._raise_if_cancelled()
+        self.progress.emit(done, total)
+
+    def _raise_if_cancelled(self) -> None:
         if self._cancelled:
             raise OSError("Transfer cancelled")
-        self.progress.emit(done, total)
 
     def _mkdir_if_missing(self, remote_path: str) -> None:
         try:
@@ -246,8 +252,10 @@ class _TransferThread(QThread):
         return total
 
     def _upload_dir(self, local_dir: str, remote_dir: str, done: int, total: int) -> int:
+        self._raise_if_cancelled()
         self._mkdir_if_missing(remote_dir)
         for name in sorted(os.listdir(local_dir)):
+            self._raise_if_cancelled()
             local_child = os.path.join(local_dir, name)
             remote_child = posixpath.join(remote_dir, name)
             if os.path.isdir(local_child):
@@ -264,8 +272,10 @@ class _TransferThread(QThread):
         return done
 
     def _download_dir(self, remote_dir: str, local_dir: str, done: int, total: int) -> int:
+        self._raise_if_cancelled()
         os.makedirs(local_dir, exist_ok=True)
         for child in sorted(self.sftp.listdir_attr(remote_dir), key=lambda a: a.filename.lower()):
+            self._raise_if_cancelled()
             if child.filename in (".", ".."):
                 continue
             remote_child = posixpath.join(remote_dir, child.filename)
@@ -955,6 +965,10 @@ class SftpBrowser(QWidget):
                 except Exception:
                     log.debug("sftp close during transfer cancel failed", exc_info=True)
                 self.sftp = None
+            QTimer.singleShot(
+                3000,
+                lambda transfer=self._transfer: self._finish_stuck_cancelled_transfer(transfer),
+            )
 
     def _stop_transfer(self, wait: bool = False) -> None:
         transfer = self._transfer
@@ -970,6 +984,33 @@ class SftpBrowser(QWidget):
             transfer.wait(2000)
         self._transfer = None
         self.cancel_btn.setEnabled(False)
+
+    def _finish_stuck_cancelled_transfer(self, transfer: _TransferThread | None) -> None:
+        if transfer is None or transfer is not self._transfer:
+            return
+        if not transfer.isRunning():
+            return
+        log.warning("SFTP transfer did not stop after cancel; detaching UI from worker")
+        self._disconnect_transfer_signals(transfer)
+        self._transfer = None
+        self._last_transfer_cancelled = False
+        self.cancel_btn.setEnabled(False)
+        self._reset_transfer_progress()
+        self._mark_transfer_finished("Canceled")
+        if not self._detaching:
+            self._reopen_sftp_after_cancel()
+
+    def _disconnect_transfer_signals(self, transfer: _TransferThread) -> None:
+        for signal, slot in (
+            (transfer.progress, self._on_transfer_progress),
+            (transfer.finished_ok, self._on_transfer_done),
+            (transfer.failed, self._on_transfer_failed),
+            (transfer.cancelled, self._on_transfer_cancelled),
+        ):
+            try:
+                signal.disconnect(slot)
+            except (TypeError, RuntimeError):
+                pass
 
     def _on_transfer_progress(self, done: int, total: int) -> None:
         self._update_transfer_progress(done, total)
