@@ -256,3 +256,21 @@ def test_ssh_browser_shows_tunnel_count(qapp):
     item = b.tree.topLevelItem(0)
     assert item.text(4) == "1/2"
     assert "SOCKS proxy" in item.toolTip(4)
+
+
+def test_ssh_browser_shows_last_error_tooltip(qapp):
+    from widgets.ssh_browser import ActiveConnection, SshBrowser
+
+    b = SshBrowser()
+    b.update_from_tabs([
+        ActiveConnection(
+            tab_index=1,
+            host="h",
+            user="u",
+            port=22,
+            status="failed",
+            error="connection refused",
+        ),
+    ])
+
+    assert "connection refused" in b.tree.topLevelItem(0).toolTip(3)

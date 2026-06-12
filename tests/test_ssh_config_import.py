@@ -16,6 +16,8 @@ def test_parse_ssh_config_imports_concrete_hosts():
           ForwardAgent yes
           ProxyJump bastion
           LocalForward 127.0.0.1:15432 db.internal:5432
+          RemoteForward 8080 127.0.0.1 80
+          DynamicForward 1080
 
         Host web-1 web-2
           HostName %h.example.com
@@ -39,7 +41,11 @@ def test_parse_ssh_config_imports_concrete_hosts():
         "certificate_path": "~/.ssh/prod-cert.pub",
         "agent_forwarding": True,
         "proxy_jump": "bastion",
-        "tunnels": ["L 127.0.0.1:15432 db.internal:5432"],
+        "tunnels": [
+            "L 127.0.0.1:15432 db.internal:5432",
+            "R 8080 127.0.0.1:80",
+            "D 1080",
+        ],
     }
     assert sessions[1]["name"] == "web-1"
     assert sessions[1]["host"] == "%h.example.com"

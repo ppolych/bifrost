@@ -33,6 +33,7 @@ class ActiveConnection:
     port: int
     status: str
     tunnels: list[dict] | None = None
+    error: str = ""
 
 
 class SshBrowser(QWidget):
@@ -109,7 +110,10 @@ class SshBrowser(QWidget):
             }.get(c.status, QColor("#cccccc"))
             for col in range(5):
                 item.setForeground(col, color)
-            item.setToolTip(3, f"SSH session is {c.status}")
+            status_tip = f"SSH session is {c.status}"
+            if c.error:
+                status_tip += f"\nLast error: {c.error}"
+            item.setToolTip(3, status_tip)
             if tunnels:
                 item.setToolTip(4, "\n".join(
                     self._tunnel_tooltip_line(t)

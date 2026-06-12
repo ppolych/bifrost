@@ -34,7 +34,7 @@ def test_tab_indexes_match_documented_order(sidebar):
     # Tabs are icon-only now; identity lives in the tooltip.
     tooltips = [sidebar.tabs.tabToolTip(i) for i in range(sidebar.tabs.count())]
     # Order matters — BifrostApp.show_dashboard and on_tab_changed reference these.
-    assert len(tooltips) == 7
+    assert len(tooltips) == 8
     assert "Sessions" in tooltips[0]
     assert "SSH" in tooltips[1]
     assert "servers" in tooltips[2].lower()
@@ -42,6 +42,7 @@ def test_tab_indexes_match_documented_order(sidebar):
     assert "Macros" in tooltips[4]
     assert "Snippets" in tooltips[5]
     assert "Docker" in tooltips[6]
+    assert "Remote Ops" in tooltips[7]
     assert not any("credential" in tooltip.lower() or "password" in tooltip.lower() for tooltip in tooltips)
 
 
@@ -76,6 +77,24 @@ def test_session_filter_shows_matching_group(sidebar):
     ]
 
     assert visible == ["Work Folders"]
+
+
+def test_session_filter_matches_tags(sidebar):
+    sidebar.session_manager.sessions = {
+        "User sessions": [
+            {"name": "db01", "type": "SSH", "host": "10.0.0.1", "tags": ["prod"]},
+            {"name": "dev01", "type": "SSH", "host": "10.0.0.2", "tags": ["dev"]},
+        ],
+    }
+    sidebar.refresh_sessions()
+    sidebar.session_filter.setText("prod")
+
+    group = sidebar.tree.topLevelItem(0)
+
+    assert not group.isHidden()
+    assert not group.child(0).isHidden()
+    assert group.child(1).isHidden()
+    assert "prod" in group.child(0).toolTip(0)
 
 
 def test_session_items_keep_live_session_object(sidebar):

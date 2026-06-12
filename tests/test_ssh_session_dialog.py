@@ -12,6 +12,15 @@ def test_session_dialog_emits_ssh_auth_fields(qapp):
     assert "password" not in data
 
 
+def test_session_dialog_emits_deduplicated_tags(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog()
+    dlg.tags_input.setText("prod, db, Prod")
+
+    assert dlg.get_data()["tags"] == ["prod", "db"]
+
+
 def test_session_dialog_loads_existing_ssh_session(qapp):
     from widgets.session_dialog import SessionDialog
 
@@ -25,6 +34,7 @@ def test_session_dialog_loads_existing_ssh_session(qapp):
         "key_path": "~/.ssh/prod",
         "certificate_path": "~/.ssh/prod-cert.pub",
         "command": "tmux attach || tmux",
+        "tags": ["prod", "db"],
     })
 
     data = dlg.get_data()
@@ -34,6 +44,7 @@ def test_session_dialog_loads_existing_ssh_session(qapp):
     assert data["key_path"] == "~/.ssh/prod"
     assert data["certificate_path"] == "~/.ssh/prod-cert.pub"
     assert data["command"] == "tmux attach || tmux"
+    assert dlg.tags_input.text() == "prod, db"
 
 
 def test_session_dialog_tmux_preset_sets_startup_command(qapp):
@@ -97,3 +108,32 @@ def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
     assert data["tunnels"] == ["D 127.0.0.1:1080"]
     assert data["mac"] == "AA:BB:CC:11:22:33"
     assert data["wol_broadcast"] == "10.0.0.255"
+
+
+def test_session_dialog_validates_tunnel_lines(qapp):
+    from widgets.session_dialog import SessionDialog
+
+    dlg = SessionDialog()
+    dlg.tunnels_input.setPlainText("L 127.0.0.1:15432 db:5432\nD 1080")
+
+    assert dlg._validate_tunnels() is True
+    assert "127.0.0.1:15432 -> db:5432" in dlg.tunnels_status.text()
+    assert dlg.get_data()["tunnels"] == [
+        "L 127.0.0.1:15432 db:5432",
+        "D 1080",
+    ]
+
+
+def test_session_dialog_blocks_invalid_tunnel_on_accept(qapp, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    from widgets.session_dialog import SessionDialog
+
+    warnings = []
+    dlg = SessionDialog()
+    dlg.tunnels_input.setPlainText("L 127.0.0.1:15432")
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    dlg._accept_if_valid()
+
+    assert warnings
+    assert dlg.result() == 0

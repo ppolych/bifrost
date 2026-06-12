@@ -10,6 +10,7 @@ from widgets.local_servers import LocalServersManager
 from widgets.sftp_browser import SftpBrowser
 from widgets.snippet_manager import SnippetWidget
 from widgets.ssh_browser import SshBrowser
+from widgets.remote_ops import RemoteOpsWidget
 
 
 def build_sidebar_ui(sidebar) -> None:
@@ -158,6 +159,10 @@ def build_builtin_tabs(sidebar) -> None:
     )
     sidebar.tabs.addTab(sidebar.docker_widget, named_icon("desktop_windows.svg"), "")
     sidebar.tabs.setTabToolTip(6, "Docker Containers")
+
+    sidebar.remote_ops_widget = RemoteOpsWidget()
+    sidebar.tabs.addTab(sidebar.remote_ops_widget, named_icon("terminal.svg"), "")
+    sidebar.tabs.setTabToolTip(7, "Remote Ops")
 
 
 def build_sftp_pane(sidebar) -> None:

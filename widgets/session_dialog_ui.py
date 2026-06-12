@@ -29,6 +29,10 @@ def build_connection_tab(dialog) -> None:
     dialog.name_input.setPlaceholderText("Leave blank to generate from connection details")
     dialog.conn_layout.addWidget(QLabel("Session name"))
     dialog.conn_layout.addWidget(dialog.name_input)
+    dialog.tags_input = QLineEdit()
+    dialog.tags_input.setPlaceholderText("prod, db, customer-a")
+    dialog.conn_layout.addWidget(QLabel("Tags"))
+    dialog.conn_layout.addWidget(dialog.tags_input)
     dialog.proto_tabs = QTabWidget()
     dialog.conn_layout.addWidget(dialog.proto_tabs)
 
@@ -143,7 +147,11 @@ def build_advanced_ssh_tab(dialog) -> None:
         "D 127.0.0.1:1080"
     )
     dialog.tunnels_input.setFixedHeight(90)
+    dialog.tunnels_input.textChanged.connect(dialog._validate_tunnels)
     dialog.advanced_ssh_layout.addRow("SSH tunnels:", dialog.tunnels_input)
+    dialog.tunnels_status = QLabel("No tunnels configured")
+    dialog.tunnels_status.setStyleSheet("font-size: 10px;")
+    dialog.advanced_ssh_layout.addRow(dialog.tunnels_status)
     dialog.tabs.addTab(dialog.advanced_ssh_tab, "Advanced SSH Settings")
 
 
@@ -252,6 +260,6 @@ def build_buttons(dialog) -> None:
         QDialogButtonBox.StandardButton.Ok |
         QDialogButtonBox.StandardButton.Cancel
     )
-    dialog.buttons.accepted.connect(dialog.accept)
+    dialog.buttons.accepted.connect(dialog._accept_if_valid)
     dialog.buttons.rejected.connect(dialog.reject)
     dialog.layout.addWidget(dialog.buttons)

@@ -71,12 +71,17 @@ def test_command_palette_includes_saved_sessions(qapp, tmp_path, monkeypatch):
 
     app = BifrostApp(settings=settings_store.default_settings())
     app.session_manager.sessions = {
-        "User sessions": [{"name": "prod", "type": "SSH", "host": "prod.example.com"}]
+        "User sessions": [{
+            "name": "prod",
+            "type": "SSH",
+            "host": "prod.example.com",
+            "tags": ["db"],
+        }]
     }
 
     labels = [entry.label for entry in app._command_palette_entries()]
 
-    assert "Open session: prod (User sessions/prod)" in labels
+    assert "Open session: prod [db] (User sessions/prod)" in labels
 
 
 def test_command_palette_includes_snippets(qapp, tmp_path, monkeypatch):

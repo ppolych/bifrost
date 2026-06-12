@@ -25,7 +25,22 @@ def _session_tooltip(session: dict) -> str:
         lines.append(f"Target: {target}:{port}")
     if session.get("favorite"):
         lines.append("⭐ Favorite")
+    tags = session.get("tags")
+    if isinstance(tags, list) and tags:
+        lines.append("Tags: " + ", ".join(str(tag) for tag in tags))
     return "<br>".join(lines) if lines else name
+
+
+def _session_search_text(session: dict) -> str:
+    tags = session.get("tags") if isinstance(session, dict) else []
+    tag_text = " ".join(str(tag) for tag in tags) if isinstance(tags, list) else ""
+    return " ".join([
+        str(session.get("name", "")),
+        str(session.get("type", "")),
+        str(session.get("host", "")),
+        str(session.get("user", "")),
+        tag_text,
+    ]).lower()
 
 
 class SidebarTreeMixin:
@@ -68,7 +83,9 @@ class SidebarTreeMixin:
         needle = (text or "").strip().lower()
 
         def apply(item) -> bool:
-            self_match = needle in item.text(0).lower() or not needle
+            session = self._session_for_item(item)
+            haystack = _session_search_text(session) if session else item.text(0).lower()
+            self_match = needle in haystack or not needle
             child_match = False
             for i in range(item.childCount()):
                 if apply(item.child(i)):

@@ -68,9 +68,11 @@ class BifrostSettingsToolsMixin:
         ]
         for path, session in _iter_sessions(self.session_manager.sessions):
             name = session.get("name") or path
+            tags = session.get("tags") if isinstance(session.get("tags"), list) else []
+            tag_text = f" [{', '.join(str(tag) for tag in tags)}]" if tags else ""
             entries.append(
                 PaletteEntry(
-                    f"Open session: {name} ({path})",
+                    f"Open session: {name}{tag_text} ({path})",
                     lambda s=session: self.on_session_activated(s),
                 )
             )

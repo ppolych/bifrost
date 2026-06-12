@@ -1,7 +1,9 @@
-from PyQt6.QtWidgets import QDialog, QFileDialog
+from PyQt6.QtWidgets import QDialog, QFileDialog, QMessageBox
 
 from widgets.session_dialog_ui import build_session_dialog_ui
+from widgets.session_tags import parse_tags, tags_text
 from widgets.tmux_commands import tmux_command
+from widgets.tunnel_validation import validate_tunnel_lines
 
 
 class SessionDialog(QDialog):
@@ -15,6 +17,7 @@ class SessionDialog(QDialog):
         if session is not None:
             self._load_session(session)
         self._on_auth_changed(self.auth_method.currentText())
+        self._validate_tunnels()
 
     def _pick_key_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select private key", "", "All Files (*)")
@@ -78,8 +81,32 @@ class SessionDialog(QDialog):
         }
         self.auth_method.setCurrentText(labels.get(value, "SSH agent"))
 
+    def _base_data(self, name: str, proto: str, overrides: dict) -> dict:
+        data = {"name": name, "type": proto, "overrides": overrides}
+        tags = parse_tags(self.tags_input.text())
+        if tags:
+            data["tags"] = tags
+        return data
+
+    def _validate_tunnels(self) -> bool:
+        _tunnels, message = validate_tunnel_lines(self.tunnels_input.toPlainText())
+        ok = not message.startswith("Line ")
+        self.tunnels_status.setText(message)
+        self.tunnels_status.setProperty("error", not ok)
+        self.tunnels_status.style().unpolish(self.tunnels_status)
+        self.tunnels_status.style().polish(self.tunnels_status)
+        return ok
+
+    def _accept_if_valid(self) -> None:
+        if not self._validate_tunnels():
+            self.tabs.setCurrentWidget(self.advanced_ssh_tab)
+            QMessageBox.warning(self, "Invalid SSH tunnel", self.tunnels_status.text())
+            return
+        self.accept()
+
     def _load_session(self, session: dict) -> None:
         self.name_input.setText(session.get("name", ""))
+        self.tags_input.setText(tags_text(session.get("tags")))
         proto = session.get("type", "SSH")
         tab = {
             "SSH": self.ssh_tab,
@@ -144,62 +171,42 @@ class SessionDialog(QDialog):
             distro = self.wsl_distro.currentText()
             distro_label = "" if distro == "(default)" else distro
             name = self.name_input.text().strip() or f"WSL: {distro_label or 'default'}"
-            return {
-                "name": name,
-                "type": "WSL",
-                "distro": distro_label,
-                "overrides": overrides,
-            }
+            data = self._base_data(name, "WSL", overrides)
+            data["distro"] = distro_label
+            return data
         if proto == "Telnet":
             host = self.telnet_host_input.text().strip() or "127.0.0.1"
             port = self.telnet_port_input.text().strip() or "23"
             name = self.name_input.text().strip() or f"telnet {host}:{port}"
-            return {
-                "name": name,
-                "type": "Telnet",
-                "host": host,
-                "port": port,
-                "overrides": overrides,
-            }
+            data = self._base_data(name, "Telnet", overrides)
+            data.update({"host": host, "port": port})
+            return data
         if proto == "VNC":
             host = self.vnc_host_input.text().strip() or "127.0.0.1"
             port = self.vnc_port_input.text().strip() or "5900"
             name = self.name_input.text().strip() or f"vnc {host}:{port}"
-            return {
-                "name": name,
-                "type": "VNC",
-                "host": host,
-                "port": port,
-                "overrides": overrides,
-            }
+            data = self._base_data(name, "VNC", overrides)
+            data.update({"host": host, "port": port})
+            return data
         if proto == "RDP":
             host = self.rdp_host_input.text().strip() or "127.0.0.1"
             port = self.rdp_port_input.text().strip() or "3389"
             name = self.name_input.text().strip() or f"rdp {host}:{port}"
-            return {
-                "name": name,
-                "type": "RDP",
-                "host": host,
-                "port": port,
-                "overrides": overrides,
-            }
+            data = self._base_data(name, "RDP", overrides)
+            data.update({"host": host, "port": port})
+            return data
         if proto == "Serial":
             device = self.serial_device_input.text().strip()
             baud = self.serial_baud_combo.currentText()
             name = self.name_input.text().strip() or f"{device or 'serial'} @{baud}"
-            return {
-                "name": name,
-                "type": "Serial",
-                "device": device,
-                "baudrate": baud,
-                "overrides": overrides,
-            }
+            data = self._base_data(name, "Serial", overrides)
+            data.update({"device": device, "baudrate": baud})
+            return data
         if proto == "SSH":
             generated_name = f"{self.user_input.text()}@{self.host_input.text()}"
             name = self.name_input.text().strip() or generated_name
-            return {
-                "name": name,
-                "type": "SSH",
+            data = self._base_data(name, "SSH", overrides)
+            data.update({
                 "host": self.host_input.text(),
                 "user": self.user_input.text(),
                 "port": self.port_input.text(),
@@ -214,21 +221,16 @@ class SessionDialog(QDialog):
                 "known_hosts_file": self.known_hosts_input.text().strip() or None,
                 "proxy_jump": self.proxy_jump_input.text().strip() or None,
                 "proxy_command": self.proxy_command_input.text().strip() or None,
-                "tunnels": [
-                    line.strip()
-                    for line in self.tunnels_input.toPlainText().splitlines()
-                    if line.strip()
-                ],
+                "tunnels": validate_tunnel_lines(self.tunnels_input.toPlainText())[0],
                 "mac": self.mac_input.text().strip() or None,
                 "wol_broadcast": self.broadcast_input.text().strip() or None,
-                "overrides": overrides,
-            }
+            })
+            return data
         name = self.name_input.text().strip() or f"{self.host_input.text()} ({self.user_input.text()})"
-        return {
-            "name": name,
-            "type": proto,
+        data = self._base_data(name, proto, overrides)
+        data.update({
             "host": self.host_input.text(),
             "user": self.user_input.text(),
             "port": self.port_input.text(),
-            "overrides": overrides,
-        }
+        })
+        return data

@@ -134,9 +134,21 @@ def _session_from_host(alias: str, options: dict[str, list[str]]) -> dict:
 def _tunnels_from_options(options: dict[str, list[str]]) -> list[str]:
     tunnels = []
     for value in options.get("localforward", []):
-        tunnels.append(f"L {value}")
+        tunnels.append(f"L {_normalize_forward(value, dynamic=False)}")
     for value in options.get("remoteforward", []):
-        tunnels.append(f"R {value}")
+        tunnels.append(f"R {_normalize_forward(value, dynamic=False)}")
     for value in options.get("dynamicforward", []):
-        tunnels.append(f"D {value}")
+        tunnels.append(f"D {_normalize_forward(value, dynamic=True)}")
     return tunnels
+
+
+def _normalize_forward(value: str, *, dynamic: bool) -> str:
+    parts = shlex.split(value, comments=False, posix=True)
+    if dynamic or len(parts) != 3:
+        return value
+    bind = parts[0]
+    target = parts[1]
+    port = parts[2]
+    if ":" not in target:
+        target = f"{target}:{port}"
+    return f"{bind} {target}"

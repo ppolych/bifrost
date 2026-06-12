@@ -7,6 +7,7 @@ class BifrostSshStatusMixin:
         self._refresh_ssh_browser()
         if index < 0:
             self.remote_monitor.set_backend(None)
+            self.sidebar.remote_ops_widget.set_backend(None)
             if hasattr(self.sidebar, "docker_widget"):
                 self.sidebar.docker_widget.set_ssh_context(None)
             return
@@ -14,6 +15,7 @@ class BifrostSshStatusMixin:
         widget = self.tabs.widget(index)
         ssh_backend = self._ssh_backend_of(widget)
         self.remote_monitor.set_backend(ssh_backend)
+        self.sidebar.remote_ops_widget.set_backend(ssh_backend)
         docker_session = widget.ssh_session if isinstance(widget, TerminalContainer) else None
         if hasattr(self.sidebar, "docker_widget"):
             self.sidebar.docker_widget.set_ssh_context(ssh_backend, docker_session)
@@ -51,6 +53,7 @@ class BifrostSshStatusMixin:
                 port=backend.creds.port,
                 status=status,
                 tunnels=backend.tunnel_statuses(),
+                error=str(backend.connect_error or ""),
             ))
         self.sidebar.ssh_browser.update_from_tabs(connections)
         self._update_ssh_tab_indicators()
