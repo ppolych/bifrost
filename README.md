@@ -3,14 +3,14 @@
 A cross-platform desktop terminal and connection manager, MobaXterm-style,
 built with PyQt6. Single-process desktop app — no server component.
 
-Bifrost groups local shells, SSH sessions, WSL distros, and (stub) RDP entries
+Bifrost groups local shells, SSH sessions, WSL distros, and RDP entries
 into a tree of saved sessions, with a built-in SFTP browser that attaches to
 the same authenticated SSH channel as the terminal so file transfers don't
 require a second login.
 
-> **Status:** early. The terminal stack, SSH, Telnet, Serial, VNC, SFTP,
-> credential storage, and session/macro persistence work today. RDP is
-> not implemented yet — see *Not done yet* below.
+> **Status:** production-hardened desktop app. Core terminal, SSH, Telnet,
+> Serial, VNC, external RDP launch, SFTP, credential storage, workspaces,
+> themes, snippets, and persistence are covered by automated tests.
 
 ## Features
 
@@ -35,6 +35,8 @@ require a second login.
   auth, Raw/CopyRect encodings, DesktopSize resize) rendered in a tab with
   full mouse/keyboard forwarding. Password is prompted per-connect, never
   stored.
+- **RDP launcher** — delegates to `mstsc` on Windows, Microsoft Remote
+  Desktop URL handling on macOS, or `xfreerdp` / `rdesktop` on Linux.
 - **Quick-connect toolbar** with a method picker (SSH / Telnet / VNC / Local
   / WSL) and per-method input parsing.
 - **Wake-on-LAN** — both per-session (right-click an SSH session with a `mac`
@@ -90,6 +92,8 @@ JSON writes are atomic (tempfile + `os.replace`).
 
 ```bash
 QT_QPA_PLATFORM=offscreen pytest -q
+python -m compileall -q bifrost_app.py bifrost_app_deps.py core widgets
+python -m pip wheel . --no-deps --no-build-isolation -w /tmp/bifrost-wheel
 ```
 
 `tests/conftest.py` already sets `QT_QPA_PLATFORM=offscreen` as a default and
@@ -127,9 +131,14 @@ See `CLAUDE.md` for the load-bearing architectural details (terminal stack
 layering, key-routing/MultiExec contract, sidebar tab indexes, settings
 plumbing).
 
-## Not done yet
+## Production Notes
 
-- RDP session backend (a UI tab exists).
+- Passwords, key passphrases, and VNC passwords are never written to JSON.
+- Session/workspace/settings writes are atomic.
+- The wheel installs all split `bifrost_app*.py` modules and bundled Material
+  SVG icons used by the UI.
+- Optional platform tools are detected at runtime: `ssh-agent`, RDP clients,
+  WSL, Docker, Kubernetes, serial support, and keyring providers.
 
 ## License
 

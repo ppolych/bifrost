@@ -34,7 +34,20 @@ serial = [
 ]
 
 [tool.setuptools]
-py-modules = ["bifrost_app"]
+py-modules = [
+    "bifrost_app",
+    "bifrost_app_deps",
+    "bifrost_app_persistence_tabs",
+    "bifrost_app_remote_files",
+    "bifrost_app_sessions",
+    "bifrost_app_settings_tools",
+    "bifrost_app_ssh_status",
+    "bifrost_app_tabs",
+    "bifrost_app_terminal_sessions",
+]
 
 [tool.setuptools.packages.find]
 include = ["core*", "widgets*"]
+
+[tool.setuptools.data-files]
+"res/icons/material" = ["res/icons/material/*.svg"]

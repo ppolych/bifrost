@@ -14,6 +14,7 @@ existing UI call sites keep working through the rename.
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 
 from PyQt6.QtGui import QIcon
@@ -21,8 +22,13 @@ from PyQt6.QtGui import QIcon
 # Material Symbols set lives under res/icons/material; the parent res/icons
 # also still contains the old asbru-cm SVGs for now (the rename PR will
 # remove them). Resolve relative to this file so the import path is robust.
-ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "res", "icons")
-MATERIAL_DIR = os.path.join(ICON_DIR, "material")
+def _icon_dirs() -> list[str]:
+    source_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return [
+        os.path.join(source_root, "res", "icons", "material"),
+        os.path.join(sys.prefix, "res", "icons", "material"),
+        os.path.join(os.path.dirname(sys.executable), "res", "icons", "material"),
+    ]
 
 
 # Session-method → Material Symbols filename. Mapped to keep visual distinction:
@@ -56,10 +62,11 @@ def _icon(name: str) -> QIcon:
     """Load a material icon by filename. Empty QIcon if missing."""
     # Resolve legacy filenames transparently.
     name = _LEGACY_ALIASES.get(name, name)
-    path = os.path.join(MATERIAL_DIR, name)
-    if not os.path.exists(path):
-        return QIcon()
-    return QIcon(path)
+    for directory in _icon_dirs():
+        path = os.path.join(directory, name)
+        if os.path.exists(path):
+            return QIcon(path)
+    return QIcon()
 
 
 def session_icon(session: dict | None) -> QIcon:
