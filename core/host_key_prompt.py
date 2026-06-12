@@ -86,7 +86,9 @@ class QtHostKeyPolicy(paramiko.MissingHostKeyPolicy):
             )
         client.get_host_keys().add(hostname, key.get_name(), key)
         try:
-            os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
+            directory = os.path.dirname(self.save_path)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
             client.save_host_keys(self.save_path)
             log.info("Added host key for %s to %s", hostname, self.save_path)
         except OSError:

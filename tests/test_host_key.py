@@ -48,6 +48,23 @@ def test_policy_persists_when_user_accepts(tmp_path):
     client.save_host_keys.assert_called_once_with(str(save_path))
 
 
+def test_policy_persists_to_bare_filename(monkeypatch):
+    from core import host_key_prompt
+    from core.host_key_prompt import QtHostKeyPolicy
+
+    makedirs = MagicMock()
+    monkeypatch.setattr(host_key_prompt.os, "makedirs", makedirs)
+    policy = QtHostKeyPolicy(_StubPrompter(accept=True), save_path="known_hosts")
+    client = MagicMock()
+    host_keys = MagicMock()
+    client.get_host_keys.return_value = host_keys
+
+    policy.missing_host_key(client, "example.com", _make_fake_key())
+
+    makedirs.assert_not_called()
+    client.save_host_keys.assert_called_once_with("known_hosts")
+
+
 def test_prompter_runs_dialog_on_gui_thread(qapp, monkeypatch):
     """The prompt is thread-safe: a worker thread calling .prompt() should not
     spin forever. We force the dialog to resolve immediately via monkeypatch."""

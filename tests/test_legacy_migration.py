@@ -66,6 +66,27 @@ def test_migration_noop_when_no_legacy_dir(qapp, tmp_path, monkeypatch):
     assert pu.migrate_legacy_config() is None
 
 
+def test_legacy_dirs_skip_relative_windows_appdata_when_unset(monkeypatch):
+    import core.platform_utils as pu
+
+    monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.setattr(pu.os.path, "expanduser", lambda value: "/home/user" if value == "~" else value)
+
+    dirs = pu._legacy_asbru_dirs()
+
+    assert "asbru" not in dirs
+    assert all(p.startswith("/home/user") for p in dirs)
+
+
+def test_legacy_dirs_include_windows_appdata_when_set(monkeypatch):
+    import core.platform_utils as pu
+
+    monkeypatch.setenv("APPDATA", r"C:\Users\alice\AppData\Roaming")
+    monkeypatch.setattr(pu.os.path, "expanduser", lambda value: "/home/user" if value == "~" else value)
+
+    assert r"C:\Users\alice\AppData\Roaming/asbru" in pu._legacy_asbru_dirs()
+
+
 def test_credentials_legacy_fallback(qapp, monkeypatch):
     """Passwords saved under the legacy 'asbru-ssh' service must still be
     readable through the new 'bifrost-ssh' service name."""

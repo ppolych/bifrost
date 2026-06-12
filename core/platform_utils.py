@@ -49,12 +49,15 @@ def _legacy_asbru_dirs() -> list[str]:
     three OSes and the format is stable.
     """
     home = os.path.expanduser("~")
-    return [
+    candidates = [
         os.path.join(home, ".config", "asbru"),                       # Linux/XDG
         os.path.join(home, "Library", "Application Support", "asbru"),  # macOS
-        os.path.join(os.environ.get("APPDATA", ""), "asbru"),         # Windows
         os.path.join(home, ".asbru"),                                 # POSIX fallback
     ]
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        candidates.insert(2, os.path.join(appdata, "asbru"))          # Windows
+    return candidates
 
 
 def migrate_legacy_config() -> tuple[int, str] | None:
