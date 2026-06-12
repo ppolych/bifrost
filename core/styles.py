@@ -210,6 +210,22 @@ def _theme_stylesheet(t: AppTheme) -> str:
             border: 1px solid transparent;
             border-radius: 3px;
         }}
+        QPushButton[compact="true"] {{
+            background-color: {t.panel};
+            color: {t.text};
+            border: 1px solid {t.border};
+            padding: 3px 6px;
+            font-size: 10px;
+        }}
+        QPushButton[compact="true"]:hover {{
+            background-color: {t.panel_alt};
+            border-color: {t.accent};
+        }}
+        QPushButton[compact="true"]:disabled {{
+            background-color: {t.surface_alt};
+            color: {t.muted};
+            border-color: {t.border};
+        }}
         QToolButton:hover {{
             background-color: {t.panel_alt};
             border-color: {t.border};
@@ -276,6 +292,10 @@ def _theme_stylesheet(t: AppTheme) -> str:
             margin-top: 10px;
             padding-top: 10px;
         }}
+        QFrame {{
+            background-color: transparent;
+            border: none;
+        }}
         QGroupBox::title {{
             subcontrol-origin: margin;
             left: 8px;
@@ -289,6 +309,13 @@ def _theme_stylesheet(t: AppTheme) -> str:
             border: 1px solid {t.border};
             border-radius: 3px;
             padding: 3px;
+        }}
+        QTreeWidget::item, QListWidget::item {{
+            padding: 2px;
+        }}
+        QTreeWidget::item:selected, QListWidget::item:selected {{
+            background-color: {t.selection};
+            color: {t.text};
         }}
         QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus,
         QDoubleSpinBox:focus, QComboBox:focus, QListView:focus, QTreeView:focus,

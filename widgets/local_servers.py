@@ -33,12 +33,11 @@ class LocalServersManager(QWidget):
         self.threads = {} # port -> thread
         
         self.label = QLabel("Local Servers (HTTP/FTP)")
-        self.label.setStyleSheet("font-weight: bold; color: #aaa;")
+        self.label.setStyleSheet("font-weight: bold;")
         self.layout.addWidget(self.label)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Server Type", "Port", "Status"])
-        self.tree.setStyleSheet("background-color: #2b2b2b; color: #ccc; border: none;")
         
         # Sample Servers
         self.items = {

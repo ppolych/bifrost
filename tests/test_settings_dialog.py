@@ -3,6 +3,50 @@
 import pytest
 
 
+THEMED_WIDGET_FILES = [
+    "bifrost_app.py",
+    "widgets/credential_manager.py",
+    "widgets/dashboard.py",
+    "widgets/docker_dashboard.py",
+    "widgets/editor.py",
+    "widgets/local_servers.py",
+    "widgets/search_bar.py",
+    "widgets/session_dialog.py",
+    "widgets/sftp_browser.py",
+    "widgets/sidebar.py",
+    "widgets/ssh_browser.py",
+    "widgets/toolbar.py",
+]
+
+
+def test_app_widgets_do_not_hardcode_dark_theme_surfaces():
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    banned = [
+        "background-color: #1e1e1e",
+        "background-color: #2b2b2b",
+        "background-color: #3c3f41",
+        "background: #1e1e1e",
+        "background: #2b2b2b",
+        "background: #3c3f41",
+        "color: #888",
+        "color: #aaa",
+        "color: #ccc",
+        "border: 1px solid #444",
+        "border: 1px solid #555",
+    ]
+
+    offenders = []
+    for relative in THEMED_WIDGET_FILES:
+        text = (repo / relative).read_text(encoding="utf-8")
+        for token in banned:
+            if token in text:
+                offenders.append(f"{relative}: {token}")
+
+    assert offenders == []
+
+
 def test_color_schemes_have_unique_palettes():
     from core.color_schemes import SCHEMES
     seen = set()

@@ -196,7 +196,6 @@ class BifrostApp(QMainWindow):
         # MultiExec Bar
         self.multi_exec_bar = QWidget()
         self.multi_exec_bar.setFixedHeight(35)
-        self.multi_exec_bar.setStyleSheet("background-color: #3c3f41; border-top: 1px solid #555;")
         self.multi_exec_layout = QHBoxLayout(self.multi_exec_bar)
         self.multi_exec_layout.setContentsMargins(10, 0, 10, 0)
         self.multi_exec_label = QLabel("ALL TERMINALS:")
@@ -213,7 +212,6 @@ class BifrostApp(QMainWindow):
         self.multi_exec_layout.addWidget(self.multi_exec_scope)
         self.multi_exec_input = QLineEdit()
         self.multi_exec_input.setPlaceholderText("Type command to send to ALL active terminals...")
-        self.multi_exec_input.setStyleSheet("background: #1a0000; color: #ffcccc; border: 1px solid red;")
         self.multi_exec_input.returnPressed.connect(self.broadcast_command)
         self.multi_exec_layout.addWidget(self.multi_exec_input)
         self.auto_cluster_cb = QCheckBox("Auto-add SSH tabs")

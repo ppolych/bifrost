@@ -82,15 +82,12 @@ class MobaEditor(QWidget):
         self.toolbar.addWidget(self.save_as_btn)
 
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #888; padding: 0 8px;")
+        self.status_label.setStyleSheet("padding: 0 8px;")
         self.toolbar.addWidget(self.status_label)
         self.layout.addWidget(self.toolbar)
 
         self.editor = QTextEdit()
         self.editor.setFont(QFont("Consolas", 11))
-        self.editor.setStyleSheet(
-            "background-color: #1e1e1e; color: #d4d4d4; border: none;"
-        )
         self.editor.textChanged.connect(self._mark_dirty)
         self.highlighter = SimpleHighlighter(self.editor.document())
         self.layout.addWidget(self.editor)

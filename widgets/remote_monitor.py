@@ -73,8 +73,7 @@ class RemoteMonitorWidget(QWidget):
     def _make_cell(self, text: str, color: str) -> QLabel:
         label = QLabel(text)
         label.setStyleSheet(
-            "QLabel { background: #171717; border: 1px solid #555; "
-            f"color: {color}; padding: 1px 7px; font-size: 10px; }}"
+            f"QLabel {{ color: {color}; padding: 1px 7px; font-size: 10px; }}"
         )
         return label
 

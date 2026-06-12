@@ -11,14 +11,12 @@ class SearchBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(40)
-        self.setStyleSheet("background-color: #3c3f41; border-top: 1px solid #555;")
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 0, 10, 0)
 
         self.input = QLineEdit()
         self.input.setPlaceholderText("Find in terminal...")
-        self.input.setStyleSheet("background: #2b2b2b; color: #ccc; border: 1px solid #555;")
         self.input.returnPressed.connect(lambda: self.search_requested.emit(self.input.text(), True))
         layout.addWidget(self.input)
 
@@ -36,7 +34,7 @@ class SearchBar(QFrame):
         layout.addWidget(self.close_btn)
 
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #888; font-size: 10px; margin-left: 10px;")
+        self.status_label.setStyleSheet("font-size: 10px; margin-left: 10px;")
         layout.addWidget(self.status_label)
 
     def set_status(self, text):

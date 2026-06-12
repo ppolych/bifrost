@@ -73,13 +73,13 @@ class SessionDialog(QDialog):
         self.passphrase_note = QLabel(
             "Passphrase (if any) is prompted at connect time and never stored."
         )
-        self.passphrase_note.setStyleSheet("color: #888; font-size: 10px;")
+        self.passphrase_note.setStyleSheet("font-size: 10px;")
         self.ssh_layout.addRow(self.passphrase_note)
 
         self.password_note = QLabel(
             "Password is prompted at connect time and never stored on disk."
         )
-        self.password_note.setStyleSheet("color: #888; font-size: 10px;")
+        self.password_note.setStyleSheet("font-size: 10px;")
         self.ssh_layout.addRow(self.password_note)
 
         self.proto_tabs.addTab(self.ssh_tab, "SSH")
@@ -167,7 +167,7 @@ class SessionDialog(QDialog):
         self.serial_layout.addRow("Device:", self.serial_device_input)
         self.serial_layout.addRow("Baud rate:", self.serial_baud_combo)
         self.serial_note = QLabel("Requires pyserial (`pip install pyserial`).")
-        self.serial_note.setStyleSheet("color: #888; font-size: 10px;")
+        self.serial_note.setStyleSheet("font-size: 10px;")
         self.serial_layout.addRow(self.serial_note)
         self.proto_tabs.addTab(self.serial_tab, "Serial")
 
@@ -179,7 +179,7 @@ class SessionDialog(QDialog):
         self.vnc_layout.addRow("Host:", self.vnc_host_input)
         self.vnc_layout.addRow("Port:", self.vnc_port_input)
         self.vnc_note = QLabel("Password (if any) is prompted at connect time and never stored.")
-        self.vnc_note.setStyleSheet("color: #888; font-size: 10px;")
+        self.vnc_note.setStyleSheet("font-size: 10px;")
         self.vnc_layout.addRow(self.vnc_note)
         self.proto_tabs.addTab(self.vnc_tab, "VNC")
 

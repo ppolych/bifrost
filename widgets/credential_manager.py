@@ -37,20 +37,17 @@ class CredentialManager(QWidget):
         self.layout = QVBoxLayout(self)
 
         self.title = QLabel("")
-        self.title.setStyleSheet("font-weight: bold; color: #aaa;")
+        self.title.setStyleSheet("font-weight: bold;")
         self.layout.addWidget(self.title)
 
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #888; font-size: 10px;")
+        self.status_label.setStyleSheet("font-size: 10px;")
         self.layout.addWidget(self.status_label)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Session", "Account", "Secret", "Status", "Provider"])
         self.tree.setRootIsDecorated(False)
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.setStyleSheet(
-            "QTreeWidget { background-color: #2b2b2b; color: #ccc; border: none; }"
-        )
         self.layout.addWidget(self.tree)
 
         btn_row = QHBoxLayout()

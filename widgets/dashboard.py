@@ -12,7 +12,6 @@ class Dashboard(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(40, 40, 40, 40)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.setStyleSheet("background-color: #2b2b2b;")
 
         # Header
         header_layout = QHBoxLayout()
@@ -20,19 +19,17 @@ class Dashboard(QWidget):
         
         title = QLabel("Bifrost")
         title.setFont(QFont("Arial", 36, QFont.Weight.Bold))
-        title.setStyleSheet("color: #569cd6;")
         title_layout.addWidget(title)
 
         subtitle = QLabel("The professional toolkit for remote computing")
         subtitle.setFont(QFont("Arial", 12))
-        subtitle.setStyleSheet("color: #888;")
         title_layout.addWidget(subtitle)
         
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
         
         logo_placeholder = QLabel("PRO")
-        logo_placeholder.setStyleSheet("background: #569cd6; color: white; padding: 10px; border-radius: 5px; font-weight: bold;")
+        logo_placeholder.setStyleSheet("padding: 10px; font-weight: bold;")
         header_layout.addWidget(logo_placeholder)
         
         self.layout.addLayout(header_layout)
@@ -46,7 +43,7 @@ class Dashboard(QWidget):
         actions_vbox = QVBoxLayout(actions_frame)
         actions_vbox.setSpacing(10)
         
-        btn_style = "text-align: left; padding: 15px; background-color: #3c3f41; color: white; border: 1px solid #555; font-size: 14px;"
+        btn_style = "text-align: left; padding: 15px; font-size: 14px;"
         
         self.btn_ssh = QPushButton("  Start local terminal")
         self.btn_ssh.setStyleSheet(btn_style)
@@ -69,11 +66,10 @@ class Dashboard(QWidget):
         recents_vbox = QVBoxLayout(recents_frame)
         
         recents_label = QLabel("Recent sessions")
-        recents_label.setStyleSheet("color: #aaa; font-weight: bold; margin-bottom: 5px;")
+        recents_label.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
         recents_vbox.addWidget(recents_label)
         
         self.recents_list = QListWidget()
-        self.recents_list.setStyleSheet("background: #1e1e1e; color: #ccc; border: 1px solid #444;")
         self.recents_list.itemDoubleClicked.connect(self.on_recent_click)
         
         if recent_sessions:

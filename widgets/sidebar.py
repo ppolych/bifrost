@@ -68,31 +68,14 @@ class Sidebar(QWidget):
         self.main_layout.setSpacing(0)
 
         # Compact stylesheet: trims default Qt padding on the west tab strip
-        # and the small action buttons that live below trees.
+        # and lets application themes provide the actual colors.
         self.setStyleSheet(
             """
             QTabWidget::pane { border: none; }
             QTabBar::tab {
-                background: #3c3f41;
-                color: #cccccc;
                 padding: 6px 4px;
                 min-width: 26px;
                 min-height: 26px;
-            }
-            QTabBar::tab:selected { background: #2b2b2b; }
-            QTabBar::tab:hover    { background: #4b4b4b; }
-            QPushButton[compact="true"] {
-                background-color: #3c3f41;
-                color: #cccccc;
-                border: 1px solid #555;
-                padding: 3px 6px;
-                font-size: 10px;
-            }
-            QPushButton[compact="true"]:hover { background-color: #4b4b4b; }
-            QTreeWidget {
-                background-color: #2b2b2b;
-                color: #ccc;
-                border: none;
             }
             QTreeWidget::item { padding: 0px; height: 18px; }
             """
@@ -246,9 +229,7 @@ class Sidebar(QWidget):
         self.collapse_btn.setText("‹")
         self.collapse_btn.setCheckable(True)
         self.collapse_btn.setFixedWidth(10)
-        self.collapse_btn.setStyleSheet(
-            "background: #3c3f41; color: #888; border: none; font-size: 10px;"
-        )
+        self.collapse_btn.setStyleSheet("border: none; font-size: 10px;")
         self.collapse_btn.clicked.connect(self.toggle_collapse)
         self.main_layout.addWidget(self.collapse_btn)
 

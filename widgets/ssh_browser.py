@@ -49,16 +49,13 @@ class SshBrowser(QWidget):
         self.layout = QVBoxLayout(self)
 
         self.label = QLabel("Active SSH connections")
-        self.label.setStyleSheet("font-weight: bold; color: #aaa;")
+        self.label.setStyleSheet("font-weight: bold;")
         self.layout.addWidget(self.label)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Host", "User", "Port", "Status", "Tunnels"])
         self.tree.setRootIsDecorated(False)
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.setStyleSheet(
-            "QTreeWidget { background-color: #2b2b2b; color: #ccc; border: none; }"
-        )
         self.tree.itemDoubleClicked.connect(self._on_double_click)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)

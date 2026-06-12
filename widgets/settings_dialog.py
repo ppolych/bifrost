@@ -357,7 +357,7 @@ class SettingsDialog(QDialog):
             "Passwords and key passphrases are stored in the system keyring "
             "(opt-in at connect time), never in sessions.json."
         )
-        note.setStyleSheet("color: #888; font-size: 10px;")
+        note.setStyleSheet("font-size: 10px;")
         note.setWordWrap(True)
         layout.addRow(note)
 
@@ -388,7 +388,7 @@ class SettingsDialog(QDialog):
             "Passwords and key passphrases are never stored in sessions.json. "
             "The selected provider handles secret storage outside session files."
         )
-        note.setStyleSheet("color: #888; font-size: 10px;")
+        note.setStyleSheet("font-size: 10px;")
         note.setWordWrap(True)
         layout.addRow(note)
 
@@ -424,7 +424,7 @@ class SettingsDialog(QDialog):
             "Relative paths are resolved against the working directory; "
             "use ~ for the home directory."
         )
-        note.setStyleSheet("color: #888; font-size: 10px;")
+        note.setStyleSheet("font-size: 10px;")
         note.setWordWrap(True)
         layout.addRow(note)
 

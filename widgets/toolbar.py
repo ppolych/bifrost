@@ -78,23 +78,17 @@ class MainToolBar(QToolBar):
         qc_layout.setSpacing(4)
 
         qc_label = QLabel("Quick Connect:")
-        qc_label.setStyleSheet("color: #aaa; font-size: 10px;")
+        qc_label.setStyleSheet("font-size: 10px;")
         qc_layout.addWidget(qc_label)
 
         self.qc_method = QComboBox()
         for display, key, skeleton in QUICK_CONNECT_METHODS:
             self.qc_method.addItem(session_icon(skeleton), display, key)
-        self.qc_method.setStyleSheet(
-            "background: #2b2b2b; color: #ccc; border: 1px solid #555; padding: 2px;"
-        )
         self.qc_method.currentIndexChanged.connect(self._update_placeholder)
         qc_layout.addWidget(self.qc_method)
 
         self.qc_input = QLineEdit()
         self.qc_input.setFixedWidth(200)
-        self.qc_input.setStyleSheet(
-            "background: #2b2b2b; color: #ccc; border: 1px solid #555;"
-        )
         self.qc_input.returnPressed.connect(self.on_qc_enter)
         qc_layout.addWidget(self.qc_input)
         self._update_placeholder()

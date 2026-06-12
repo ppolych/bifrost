@@ -19,7 +19,7 @@ class DockerDashboard(QWidget):
         layout.setSpacing(2)
 
         self.context_label = QLabel("Docker: Local")
-        self.context_label.setStyleSheet("color: #aaa; font-size: 10px;")
+        self.context_label.setStyleSheet("font-size: 10px;")
         layout.addWidget(self.context_label)
 
         self.tree = QTreeWidget()

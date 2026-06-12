@@ -324,11 +324,6 @@ class SftpBrowser(QWidget):
             b.setProperty("compact", True)
             b.setIconSize(QSize(16, 16))
             b.setFixedSize(QSize(28, 24))
-            b.setStyleSheet(
-                "QPushButton { background-color: #3c3f41; border: 1px solid #555; }"
-                "QPushButton:hover { background-color: #4b4b4b; }"
-                "QPushButton:disabled { background-color: #2b2b2b; border-color: #444; }"
-            )
             self.toolbar.addWidget(b)
         self.layout.addWidget(self.toolbar)
 
@@ -342,7 +337,7 @@ class SftpBrowser(QWidget):
 
         # Path label
         self.path_label = QLabel("Not connected")
-        self.path_label.setStyleSheet("color: #aaa; padding: 4px;")
+        self.path_label.setStyleSheet("padding: 4px;")
         self.layout.addWidget(self.path_label)
 
         # Tree
@@ -352,9 +347,6 @@ class SftpBrowser(QWidget):
         self.tree.setIconSize(QSize(16, 16))
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tree.setStyleSheet(
-            "QTreeWidget { background-color: #1e1e1e; color: #ccc; border: none; }"
-        )
         self.tree.itemDoubleClicked.connect(self._on_double_click)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
@@ -373,17 +365,11 @@ class SftpBrowser(QWidget):
         transfer_layout.setContentsMargins(4, 3, 4, 3)
         transfer_layout.setSpacing(8)
         self.transfer_status = QLabel("")
-        self.transfer_status.setStyleSheet("color: #cfcfcf;")
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(True)
         self.progress.setMinimumWidth(140)
-        self.progress.setStyleSheet(
-            "QProgressBar { background-color: #1e1e1e; border: 1px solid #555; "
-            "color: #f0f0f0; height: 14px; text-align: center; }"
-            "QProgressBar::chunk { background-color: #4ea1f3; }"
-        )
         transfer_layout.addWidget(self.transfer_status, 1)
         transfer_layout.addWidget(self.progress, 2)
         self.transfer_panel.hide()
