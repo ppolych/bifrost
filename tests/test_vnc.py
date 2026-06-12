@@ -2,141 +2,22 @@
 exercised against a scripted fake RFB server on a real socket."""
 
 import io
-import socket
 import struct
-import threading
 import time
 
 import pytest
 
 from core.vnc_client import (
-    ENC_COPY_RECT, ENC_DESKTOP_SIZE, ENC_RAW, SEC_NONE, SEC_VNC_AUTH,
+    ENC_COPY_RECT, ENC_DESKTOP_SIZE, ENC_RAW,
     VncClient, _reverse_bits, vnc_auth_response,
 )
-
-
-class FakeRfbServer(threading.Thread):
-    """Single-connection RFB 3.8 server: None or VNC auth, one raw frame,
-    then records every client message it receives."""
-
-    def __init__(self, password=None, width=8, height=4, fill=(10, 20, 30), name="fake-vnc"):
-        super().__init__(daemon=True)
-        self.password = password
-        self.width, self.height = width, height
-        self.fill = fill
-        self.display_name = name
-        self.pointer_events = []
-        self.key_events = []
-        self.update_requests = 0
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind(("127.0.0.1", 0))
-        self.sock.listen(1)
-        self.port = self.sock.getsockname()[1]
-
-    def _recv(self, conn, n):
-        buf = b""
-        while len(buf) < n:
-            chunk = conn.recv(n - len(buf))
-            if not chunk:
-                raise ConnectionError("client gone")
-            buf += chunk
-        return buf
-
-    def run(self):
-        conn, _ = self.sock.accept()
-        try:
-            conn.sendall(b"RFB 003.008\n")
-            assert self._recv(conn, 12) == b"RFB 003.008\n"
-
-            sectype = SEC_VNC_AUTH if self.password else SEC_NONE
-            conn.sendall(bytes([1, sectype]))
-            chosen = self._recv(conn, 1)[0]
-            assert chosen == sectype
-            if sectype == SEC_VNC_AUTH:
-                challenge = bytes(range(16))
-                conn.sendall(challenge)
-                response = self._recv(conn, 16)
-                ok = response == vnc_auth_response(self.password, challenge)
-                if not ok:
-                    reason = b"wrong password"
-                    conn.sendall(struct.pack(">I", 1) + struct.pack(">I", len(reason)) + reason)
-                    return
-                conn.sendall(struct.pack(">I", 0))
-            else:
-                conn.sendall(struct.pack(">I", 0))
-
-            self._recv(conn, 1)  # ClientInit
-            pixfmt = struct.pack(">BBBBHHHBBBxxx", 32, 24, 0, 1, 255, 255, 255, 0, 8, 16)
-            name = self.display_name.encode()
-            conn.sendall(
-                struct.pack(">HH", self.width, self.height) + pixfmt
-                + struct.pack(">I", len(name)) + name
-            )
-
-            while True:
-                msg = self._recv(conn, 1)[0]
-                if msg == 0:  # SetPixelFormat
-                    self._recv(conn, 19)
-                elif msg == 2:  # SetEncodings
-                    self._recv(conn, 1)
-                    (count,) = struct.unpack(">H", self._recv(conn, 2))
-                    self._recv(conn, 4 * count)
-                elif msg == 3:  # FramebufferUpdateRequest
-                    self._recv(conn, 9)
-                    self.update_requests += 1
-                    if self.update_requests == 1:
-                        r, g, b = self.fill
-                        pixel = bytes([r, g, b, 0])
-                        data = pixel * (self.width * self.height)
-                        conn.sendall(
-                            struct.pack(">BxH", 0, 1)
-                            + struct.pack(">HHHHi", 0, 0, self.width, self.height, ENC_RAW)
-                            + data
-                        )
-                elif msg == 5:  # PointerEvent
-                    mask, x, y = struct.unpack(">BHH", self._recv(conn, 5))
-                    self.pointer_events.append((mask, x, y))
-                elif msg == 4:  # KeyEvent
-                    down, _, keysym = struct.unpack(">BHI", self._recv(conn, 7))
-                    self.key_events.append((down, keysym))
-                else:
-                    return
-        except (ConnectionError, AssertionError, OSError):
-            pass
-        finally:
-            conn.close()
-            self.sock.close()
-
-
-class Events:
-    def __init__(self):
-        self.connected = threading.Event()
-        self.frame = threading.Event()
-        self.closed = threading.Event()
-        self.name = None
-        self.error = None
-
-    def bind(self, **kw):
-        return dict(
-            on_connected=lambda n: (setattr(self, "name", n), self.connected.set()),
-            on_frame=self.frame.set,
-            on_error=lambda m: setattr(self, "error", m),
-            on_closed=self.closed.set,
-            **kw,
-        )
-
-
-def _connect(server, password=None):
-    ev = Events()
-    client = VncClient("127.0.0.1", server.port, password, **ev.bind())
-    client.start()
-    return client, ev
+from tests.vnc_support import FakeRfbServer, connect
 
 
 def test_handshake_frame_and_name():
     server = FakeRfbServer(fill=(1, 2, 3))
     server.start()
-    client, ev = _connect(server)
+    client, ev = connect(server)
     assert ev.connected.wait(timeout=5)
     assert ev.name == "fake-vnc"
     assert ev.frame.wait(timeout=5)
@@ -150,7 +31,7 @@ def test_handshake_frame_and_name():
 def test_vnc_auth_success():
     server = FakeRfbServer(password="s3cret")
     server.start()
-    client, ev = _connect(server, password="s3cret")
+    client, ev = connect(server, password="s3cret")
     assert ev.connected.wait(timeout=5)
     assert ev.error is None
     client.close()
@@ -159,7 +40,7 @@ def test_vnc_auth_success():
 def test_vnc_auth_failure_reports_reason():
     server = FakeRfbServer(password="right")
     server.start()
-    client, ev = _connect(server, password="wrong")
+    client, ev = connect(server, password="wrong")
     assert ev.closed.wait(timeout=5)
     assert ev.error is not None
     assert "wrong password" in ev.error
@@ -169,7 +50,7 @@ def test_vnc_auth_failure_reports_reason():
 def test_missing_password_fails_cleanly():
     server = FakeRfbServer(password="needed")
     server.start()
-    client, ev = _connect(server, password=None)
+    client, ev = connect(server, password=None)
     assert ev.closed.wait(timeout=5)
     assert "password" in (ev.error or "")
     client.close()
@@ -178,7 +59,7 @@ def test_missing_password_fails_cleanly():
 def test_pointer_and_key_events_reach_server():
     server = FakeRfbServer()
     server.start()
-    client, ev = _connect(server)
+    client, ev = connect(server)
     assert ev.frame.wait(timeout=5)
     client.send_pointer(3, 2, 1)
     client.send_key(0xFF0D, True)

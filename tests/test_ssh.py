@@ -1,8 +1,6 @@
-"""Tests for SSH backend and SFTP browser pieces that don't need a real server."""
+"""Tests for SSH backend pieces that don't need a real server."""
 
 import os
-import posixpath
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -200,64 +198,6 @@ def test_backend_emits_connecting_hint_before_ready():
     assert out.startswith(b"Connecting to u@example.invalid")
 
 
-def test_build_ssh_backend_prompts_for_missing_key(qapp, monkeypatch):
-    from bifrost_app import BifrostApp
-
-    app = BifrostApp.__new__(BifrostApp)
-    app.settings = {
-        "ssh_startup_command": "",
-        "credential_save_policy": "never",
-        "ssh_connect_timeout": 15,
-        "ssh_agent_forwarding": False,
-        "known_hosts_file": "",
-        "ssh_keepalive_interval": 0,
-        "ssh_tcp_keepalive": True,
-    }
-    app.host_key_prompter = object()
-
-    monkeypatch.setattr("bifrost_app.credentials.is_available", lambda: False)
-    monkeypatch.setattr("bifrost_app.credentials.provider_label", lambda: "system keyring")
-    monkeypatch.setattr("bifrost_app.credentials.get_passphrase", lambda _path: "")
-    monkeypatch.setattr(
-        "bifrost_app.QFileDialog.getOpenFileName",
-        lambda *args, **kwargs: ("/home/user/.ssh/id_ed25519", ""),
-    )
-
-    session = {"name": "prod", "type": "SSH", "host": "h", "user": "u", "auth": "key"}
-    backend = BifrostApp._build_ssh_backend(app, "prod", session)
-
-    assert backend is not None
-    assert backend.creds.key_filename == "/home/user/.ssh/id_ed25519"
-    assert session["key_path"] == "/home/user/.ssh/id_ed25519"
-
-
-def test_build_ssh_backend_cancels_missing_key(qapp, monkeypatch):
-    from bifrost_app import BifrostApp
-
-    app = BifrostApp.__new__(BifrostApp)
-    app.settings = {
-        "ssh_startup_command": "",
-        "credential_save_policy": "never",
-        "ssh_connect_timeout": 15,
-        "ssh_agent_forwarding": False,
-        "known_hosts_file": "",
-        "ssh_keepalive_interval": 0,
-        "ssh_tcp_keepalive": True,
-    }
-    app.host_key_prompter = object()
-
-    warnings = []
-    monkeypatch.setattr("bifrost_app.credentials.is_available", lambda: False)
-    monkeypatch.setattr("bifrost_app.credentials.provider_label", lambda: "system keyring")
-    monkeypatch.setattr("bifrost_app.QFileDialog.getOpenFileName", lambda *args, **kwargs: ("", ""))
-    monkeypatch.setattr("bifrost_app.QMessageBox.warning", lambda *args, **kwargs: warnings.append(args))
-
-    session = {"name": "prod", "type": "SSH", "host": "h", "user": "u", "auth": "key"}
-
-    assert BifrostApp._build_ssh_backend(app, "prod", session) is None
-    assert warnings
-
-
 def test_backend_emits_error_once():
     from core.ssh_backend import ParamikoBackend, SshCredentials
 
@@ -333,44 +273,6 @@ def test_tunnel_status_and_stop(monkeypatch):
     assert backend.stop_tunnel(99) is False
 
 
-def test_sftp_format_size():
-    from widgets.sftp_browser import _format_size
-
-    assert _format_size(0) == "0 B"
-    assert _format_size(512) == "512 B"
-    assert _format_size(2048) == "2.0 KB"
-    assert _format_size(5 * 1024 * 1024) == "5.0 MB"
-
-
-def test_sftp_path_navigation_uses_posix(qapp):
-    """Even on Windows, remote paths must stay POSIX. Regression guard for
-    accidental os.path.join usage."""
-    from widgets.sftp_browser import SftpBrowser
-
-    browser = SftpBrowser()
-    fake_sftp = MagicMock()
-    fake_sftp.listdir_attr.return_value = []
-    fake_sftp.normalize.return_value = "/home/user"
-
-    fake_client = MagicMock()
-    fake_client.open_sftp.return_value = fake_sftp
-
-    browser.attach(fake_client)
-    assert browser.cwd == "/home/user"
-
-    # Simulate entering a subdirectory.
-    browser.cwd = posixpath.join(browser.cwd, "sub")
-    browser._refresh()
-    assert browser.cwd == "/home/user/sub"
-
-    # Up should land back at parent (POSIX style).
-    browser._go_up()
-    assert browser.cwd == "/home/user"
-
-    browser.detach()
-    assert not browser.is_attached()
-
-
 def test_session_manager_find_by_name(qapp, tmp_path, monkeypatch):
     import core.persistence as persistence
 
@@ -383,93 +285,3 @@ def test_session_manager_find_by_name(qapp, tmp_path, monkeypatch):
     assert sm.find_by_name("prod-1")["host"] == "1.1.1.1"
     assert sm.find_by_name("prod-2")["host"] == "2.2.2.2"
     assert sm.find_by_name("missing") is None
-
-
-def test_session_dialog_emits_ssh_auth_fields(qapp):
-    from widgets.session_dialog import SessionDialog
-
-    dlg = SessionDialog()
-    # default is SSH tab + agent auth
-    data = dlg.get_data()
-    assert data["type"] == "SSH"
-    assert data["auth"] == "agent"
-    assert data["host"] == "127.0.0.1"
-    assert data["user"] == "root"
-    assert data["port"] == "22"
-    assert data["key_path"] is None
-    # password is never in the dict
-    assert "password" not in data
-
-
-def test_session_dialog_loads_existing_ssh_session(qapp):
-    from widgets.session_dialog import SessionDialog
-
-    dlg = SessionDialog(session={
-        "name": "prod",
-        "type": "SSH",
-        "host": "prod.example.com",
-        "user": "admin",
-        "port": "2222",
-        "auth": "key",
-        "key_path": "~/.ssh/prod",
-        "certificate_path": "~/.ssh/prod-cert.pub",
-        "command": "tmux attach || tmux",
-    })
-
-    data = dlg.get_data()
-    assert data["name"] == "prod"
-    assert data["host"] == "prod.example.com"
-    assert data["auth"] == "key"
-    assert data["key_path"] == "~/.ssh/prod"
-    assert data["certificate_path"] == "~/.ssh/prod-cert.pub"
-    assert data["command"] == "tmux attach || tmux"
-
-
-def test_session_dialog_tmux_preset_sets_startup_command(qapp):
-    from widgets.session_dialog import SessionDialog
-
-    dlg = SessionDialog()
-    idx = dlg.tmux_preset.findText("Attach or create")
-
-    dlg.tmux_preset.setCurrentIndex(idx)
-
-    assert dlg.command_input.text() == "tmux new-session -A -s main"
-    assert dlg.tmux_preset.currentIndex() == 0
-
-
-def test_session_dialog_exposes_advanced_ssh_and_network_sections(qapp):
-    from widgets.session_dialog import SessionDialog
-
-    dlg = SessionDialog(session={
-        "name": "prod",
-        "type": "SSH",
-        "host": "prod.example.com",
-        "user": "admin",
-        "connect_timeout": 45,
-        "agent_forwarding": True,
-        "keepalive_interval": 60,
-        "tcp_keepalive": True,
-        "known_hosts_file": "~/.ssh/prod_known_hosts",
-        "proxy_jump": "ops@bastion:2222",
-        "proxy_command": "ssh -W %h:%p bastion",
-        "tunnels": ["D 127.0.0.1:1080"],
-        "mac": "AA:BB:CC:11:22:33",
-        "wol_broadcast": "10.0.0.255",
-    })
-
-    dlg.set_current_section("advanced_ssh")
-    assert dlg.tabs.currentWidget() is dlg.advanced_ssh_tab
-    dlg.set_current_section("network")
-    assert dlg.tabs.currentWidget() is dlg.network_tab
-
-    data = dlg.get_data()
-    assert data["connect_timeout"] == 45
-    assert data["agent_forwarding"] is True
-    assert data["keepalive_interval"] == 60
-    assert data["tcp_keepalive"] is True
-    assert data["known_hosts_file"] == "~/.ssh/prod_known_hosts"
-    assert data["proxy_jump"] == "ops@bastion:2222"
-    assert data["proxy_command"] == "ssh -W %h:%p bastion"
-    assert data["tunnels"] == ["D 127.0.0.1:1080"]
-    assert data["mac"] == "AA:BB:CC:11:22:33"
-    assert data["wol_broadcast"] == "10.0.0.255"
