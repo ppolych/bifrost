@@ -145,6 +145,7 @@ class BifrostPersistenceTabsMixin:
         self.cluster_tabs.discard(widget)
         widget.deleteLater()
         self.tabs.removeTab(index)
+        self._refresh_open_session_indicators()
 
     def close_current_tab(self):
         index = self.tabs.currentIndex()
@@ -190,6 +191,12 @@ class BifrostPersistenceTabsMixin:
                 if not getattr(backend, "_closed", True):
                     return True
         return False
+
+    def _remember_sftp_column_widths(self, widths: list[int]) -> None:
+        if not widths:
+            return
+        self.settings["sftp_column_widths"] = widths
+        save_settings(self.settings)
 
     def closeEvent(self, event):
         # Save window geometry first so a "confirm and cancel" path still updates

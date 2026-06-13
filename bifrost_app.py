@@ -1,4 +1,5 @@
 from bifrost_app_deps import *
+import time
 from bifrost_app_persistence_tabs import BifrostPersistenceTabsMixin
 from bifrost_app_remote_files import BifrostRemoteFilesMixin
 from bifrost_app_sessions import BifrostSessionsMixin
@@ -15,6 +16,52 @@ from bifrost_app_deps import (
     _strip_outer_quotes,
 )
 
+
+def parse_quick_connect_command(method: str, text: str) -> tuple[str, str]:
+    raw = (text or "").strip()
+    if not raw:
+        return method, raw
+    try:
+        parts = shlex.split(raw)
+    except ValueError:
+        return method, raw
+    if not parts:
+        return method, raw
+    command = parts[0].lower()
+    if command not in {"ssh", "telnet", "rdp", "vnc", "wsl", "local"}:
+        return method, raw
+    args = parts[1:]
+    if command == "ssh":
+        host = ""
+        port = ""
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg in {"-p", "-P"} and i + 1 < len(args):
+                port = args[i + 1]
+                i += 2
+                continue
+            if arg.startswith("-p") and arg[2:].isdigit():
+                port = arg[2:]
+                i += 1
+                continue
+            if not arg.startswith("-") and not host:
+                host = arg
+            i += 1
+        if host and port and ":" not in host:
+            host = f"{host}:{port}"
+        return "SSH", host
+    if command in {"telnet", "rdp"}:
+        target = args[0] if args else ""
+        if len(args) > 1 and args[1].isdigit() and ":" not in target:
+            target = f"{target}:{args[1]}"
+        return command.upper() if command == "rdp" else "Telnet", target
+    if command == "vnc":
+        return "VNC", args[0] if args else ""
+    if command == "wsl":
+        return "WSL", args[0] if args else ""
+    return "Local", " ".join(args)
+
 class BifrostApp(
     BifrostTabsMixin,
     BifrostSettingsToolsMixin,
@@ -26,6 +73,12 @@ class BifrostApp(
     QMainWindow,
 ):
     def __init__(self, is_detached=False, settings=None):
+        startup_started = time.perf_counter()
+        startup_marks: list[tuple[str, float]] = []
+
+        def mark(label: str) -> None:
+            startup_marks.append((label, time.perf_counter() - startup_started))
+
         super().__init__()
         self.setWindowTitle("Bifrost Connection Manager")
         self.setWindowIcon(app_icon())
@@ -48,6 +101,7 @@ class BifrostApp(
         self.cluster_tabs = set()
         self.multi_exec_enabled = False
         setup_app_menus(self)
+        mark("core")
         
         # Toolbar
         self.toolbar = MainToolBar(self)
@@ -62,6 +116,7 @@ class BifrostApp(
         self.toolbar.diagnostics_requested.connect(self.show_diagnostics)
         self.toolbar.settings_act.triggered.connect(self.open_settings_dialog)
         self.addToolBar(self.toolbar)
+        mark("toolbar")
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -74,6 +129,7 @@ class BifrostApp(
         # Sidebar
         self.sidebar = Sidebar(self.session_manager, self.macro_engine, self.snippet_manager)
         self.sidebar.session_activated.connect(self.on_session_activated)
+        self.sidebar.session_focus_requested.connect(self.focus_session_tab)
         self.sidebar.favorite_toggled.connect(self.on_favorite_toggled)
         self.sidebar.forget_credentials.connect(self.on_forget_credentials)
         self.sidebar.wake_on_lan.connect(self.on_wake_on_lan)
@@ -90,18 +146,22 @@ class BifrostApp(
         self.sidebar.ssh_browser.reconnect_tab.connect(self._reconnect_tab)
         self.sidebar.ssh_browser.reconnect_all.connect(self._reconnect_all_disconnected)
         self.sidebar.ssh_browser.stop_tunnel.connect(self._stop_ssh_tunnel)
+        self.sidebar.tabs.currentChanged.connect(self._on_sidebar_tab_changed)
         self.sidebar.sftp_widget.file_double_clicked.connect(self.open_file_in_editor)
         self.sidebar.sftp_widget.file_text_editor_requested.connect(self.open_file_in_text_editor)
         self.sidebar.sftp_widget.file_open_with_requested.connect(self.open_file_with_command)
         self.sidebar.sftp_widget.file_system_open_requested.connect(self.open_file_with_system_default)
         self.sidebar.sftp_widget.path_to_terminal_requested.connect(self.send_remote_path_to_terminal)
         self.sidebar.sftp_widget.set_show_hidden(self.settings.get("sftp_show_hidden", False))
+        self.sidebar.sftp_widget.set_column_widths(self.settings.get("sftp_column_widths", []))
+        self.sidebar.sftp_widget.column_widths_changed.connect(self._remember_sftp_column_widths)
         self.sidebar.tool_triggered.connect(self.on_tool_triggered)
         self.sidebar.macro_triggered.connect(self.run_macro)
         self.sidebar.snippet_triggered.connect(self.run_snippet)
         self.sidebar.container_shell_requested.connect(self.open_container_terminal)
         self.sidebar.record_btn.clicked.connect(self.toggle_macro_recording)
         self.sidebar.collapse_requested.connect(self.on_sidebar_collapsed)
+        mark("sidebar")
         
         if not is_detached:
             self.splitter.addWidget(self.sidebar)
@@ -122,6 +182,7 @@ class BifrostApp(
         self.sidebar.content_splitter.splitterMoved.connect(lambda *_: self._remember_layout_state())
         self.sidebar.tabs.currentChanged.connect(lambda *_: self._remember_layout_state())
         self.main_vbox.addWidget(self.splitter)
+        mark("tabs")
 
         # MultiExec Bar
         self.multi_exec_bar = QWidget()
@@ -164,6 +225,7 @@ class BifrostApp(
         self.mem_label = QLabel("MEM: 0%")
         self.status_bar.addPermanentWidget(self.cpu_label)
         self.status_bar.addPermanentWidget(self.mem_label)
+        mark("statusbar")
         
         self.metrics_timer = QTimer(self)
         self.metrics_timer.timeout.connect(self.update_metrics)
@@ -183,6 +245,7 @@ class BifrostApp(
         # Populate the credentials view + active-sessions browser once at startup.
         self._refresh_credentials_view()
         self._refresh_ssh_browser()
+        mark("initial-refresh")
         # Restore window geometry if the setting is on and a saved blob exists.
         if not is_detached and self.settings.get("restore_window_geometry", True):
             blob_hex = self.settings.get("window_geometry") or ""
@@ -194,6 +257,10 @@ class BifrostApp(
         if not is_detached:
             if self.settings["show_dashboard"]: self.show_dashboard()
             else: self.new_terminal_tab("Local Shell")
+        mark("initial-tab")
+        total_ms = (time.perf_counter() - startup_started) * 1000
+        detail = ", ".join(f"{label}={elapsed * 1000:.1f}ms" for label, elapsed in startup_marks)
+        log.info("Bifrost startup complete in %.1fms (%s)", total_ms, detail)
 
 
 def main() -> int:

@@ -8,6 +8,8 @@ class BifrostSessionsMixin:
 
     def on_session_activated(self, session: dict):
         """Route a session opening by its explicit `type`, not by name sniffing."""
+        if self.focus_session_tab(session):
+            return
         name = session.get("name") or "Session"
         proto = session.get("type")
         if proto == "WSL":
@@ -45,6 +47,15 @@ class BifrostSessionsMixin:
             )
         else:
             self.new_terminal_tab(name, session_data=session)
+
+    def focus_session_tab(self, session: dict) -> bool:
+        if "tabs" not in self.__dict__:
+            return False
+        for i in range(self.tabs.count()):
+            if getattr(self.tabs.widget(i), "source_session_id", None) == id(session):
+                self.tabs.setCurrentIndex(i)
+                return True
+        return False
 
     def save_current_workspace(self):
         sessions = self._current_workspace_sessions()
@@ -197,6 +208,7 @@ class BifrostSessionsMixin:
         self.session_manager.save()
 
     def on_quick_connect(self, method: str, text: str):
+        method, text = parse_quick_connect_command(method, text)
         text = (text or "").strip()
         if method == "SSH":
             if not text:

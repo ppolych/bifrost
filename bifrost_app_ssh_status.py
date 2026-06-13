@@ -8,8 +8,9 @@ class BifrostSshStatusMixin:
         if index < 0:
             self.remote_monitor.set_backend(None)
             self.sidebar.remote_ops_widget.set_backend(None)
-            if hasattr(self.sidebar, "docker_widget"):
-                self.sidebar.docker_widget.set_ssh_context(None)
+            docker_widget = self.sidebar.docker_widget_if_loaded()
+            if docker_widget is not None:
+                docker_widget.set_ssh_context(None)
             return
         name = self.tabs.tabText(index)
         widget = self.tabs.widget(index)
@@ -17,8 +18,9 @@ class BifrostSshStatusMixin:
         self.remote_monitor.set_backend(ssh_backend)
         self.sidebar.remote_ops_widget.set_backend(ssh_backend)
         docker_session = widget.ssh_session if isinstance(widget, TerminalContainer) else None
-        if hasattr(self.sidebar, "docker_widget"):
-            self.sidebar.docker_widget.set_ssh_context(ssh_backend, docker_session)
+        docker_widget = self.sidebar.docker_widget_if_loaded()
+        if docker_widget is not None:
+            docker_widget.set_ssh_context(ssh_backend, docker_session)
 
         if ssh_backend is not None:
             # MobaXterm-style: SFTP pane is always visible alongside the
@@ -36,6 +38,31 @@ class BifrostSshStatusMixin:
 
         if "Servers" in name:
             self.sidebar.tabs.setCurrentIndex(2)
+
+    def _on_sidebar_tab_changed(self, index):
+        if index != 6:
+            return
+        docker_widget = self.sidebar.docker_widget_if_loaded()
+        if docker_widget is None:
+            return
+        widget = self.tabs.currentWidget()
+        ssh_backend = self._ssh_backend_of(widget)
+        docker_session = widget.ssh_session if isinstance(widget, TerminalContainer) else None
+        docker_widget.set_ssh_context(ssh_backend, docker_session)
+
+    def _refresh_open_session_indicators(self):
+        open_ids = {
+            session_id for i in range(self.tabs.count())
+            if (session_id := getattr(self.tabs.widget(i), "source_session_id", None)) is not None
+        }
+        for window in list(getattr(self, "detached_windows", [])):
+            if window is None:
+                continue
+            for i in range(window.tabs.count()):
+                session_id = getattr(window.tabs.widget(i), "source_session_id", None)
+                if session_id is not None:
+                    open_ids.add(session_id)
+        self.sidebar.set_open_session_ids(open_ids)
 
     def _refresh_ssh_browser(self):
         from widgets.ssh_browser import ActiveConnection
@@ -150,6 +177,7 @@ class BifrostSshStatusMixin:
             backend=new_backend,
             ssh_session=session,
         )
+        container.source_session_id = getattr(widget, "source_session_id", None)
         container.detach_requested.connect(self.detach_terminal)
         self.tabs.insertTab(tab_index, container, old_text)
         self.tabs.setCurrentIndex(tab_index)
@@ -158,6 +186,7 @@ class BifrostSshStatusMixin:
         if self.multi_exec_enabled:
             self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
+        self._refresh_open_session_indicators()
         self.status_bar.showMessage(
             f"Reconnecting {session.get('user', '')}@{session.get('host', '')}", 4000,
         )
@@ -213,12 +242,14 @@ class BifrostSshStatusMixin:
                 )
                 return
             if backend.client is not None:
-                self.sidebar.docker_widget.set_ssh_context(
-                    backend,
-                    self.tabs.currentWidget().ssh_session
-                    if isinstance(self.tabs.currentWidget(), TerminalContainer)
-                    else None,
-                )
+                docker_widget = self.sidebar.docker_widget_if_loaded()
+                if docker_widget is not None:
+                    docker_widget.set_ssh_context(
+                        backend,
+                        self.tabs.currentWidget().ssh_session
+                        if isinstance(self.tabs.currentWidget(), TerminalContainer)
+                        else None,
+                    )
                 self.sidebar.sftp_widget.attach(backend.client)
             return
 
@@ -236,12 +267,14 @@ class BifrostSshStatusMixin:
                     )
                     return
                 if backend.client is not None:
-                    self.sidebar.docker_widget.set_ssh_context(
-                        backend,
-                        self.tabs.currentWidget().ssh_session
-                        if isinstance(self.tabs.currentWidget(), TerminalContainer)
-                        else None,
-                    )
+                    docker_widget = self.sidebar.docker_widget_if_loaded()
+                    if docker_widget is not None:
+                        docker_widget.set_ssh_context(
+                            backend,
+                            self.tabs.currentWidget().ssh_session
+                            if isinstance(self.tabs.currentWidget(), TerminalContainer)
+                            else None,
+                        )
                     self.sidebar.sftp_widget.attach(backend.client)
                 return
             QTimer.singleShot(250, poll)

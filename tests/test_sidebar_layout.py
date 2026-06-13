@@ -6,6 +6,7 @@ and on_tab_changed don't drift.
 """
 
 import pytest
+from types import SimpleNamespace
 
 
 @pytest.fixture
@@ -46,6 +47,16 @@ def test_tab_indexes_match_documented_order(sidebar):
     assert not any("credential" in tooltip.lower() or "password" in tooltip.lower() for tooltip in tooltips)
 
 
+def test_secondary_tabs_are_lazy_loaded(sidebar):
+    assert sidebar.docker_widget_if_loaded() is None
+    assert 6 in sidebar._lazy_tab_builders
+
+    sidebar.tabs.setCurrentIndex(6)
+
+    assert sidebar.docker_widget_if_loaded() is not None
+    assert 6 not in sidebar._lazy_tab_builders
+
+
 def test_sftp_widget_is_in_the_splitter(sidebar):
     splitter = sidebar.content_splitter
     assert splitter.count() == 2
@@ -65,6 +76,16 @@ def test_session_tree_starts_collapsed(sidebar):
     for i in range(sidebar.tree.topLevelItemCount()):
         item = sidebar.tree.topLevelItem(i)
         assert not item.isExpanded()
+
+
+def test_collapse_all_folders(sidebar):
+    for i in range(sidebar.tree.topLevelItemCount()):
+        sidebar.tree.topLevelItem(i).setExpanded(True)
+
+    sidebar.collapse_all_folders()
+
+    for i in range(sidebar.tree.topLevelItemCount()):
+        assert not sidebar.tree.topLevelItem(i).isExpanded()
 
 
 def test_session_filter_shows_matching_group(sidebar):
@@ -112,6 +133,50 @@ def test_session_items_keep_live_session_object(sidebar):
 
     assert sidebar._session_for_item(first) is sidebar.session_manager.sessions["User sessions"][0]
     assert sidebar._session_for_item(second) is sidebar.session_manager.sessions["User sessions"][1]
+
+
+def test_open_session_indicator_focuses_existing_session(sidebar):
+    session = {"name": "prod", "type": "SSH", "host": "one"}
+    sidebar.session_manager.sessions = {"User sessions": [session]}
+    sidebar.set_open_session_ids({id(session)})
+
+    group = sidebar.tree.topLevelItem(0)
+    item = group.child(0)
+    focused = []
+    opened = []
+    sidebar.session_focus_requested.connect(focused.append)
+    sidebar.session_activated.connect(opened.append)
+
+    assert item.text(0).startswith("● ")
+    sidebar.on_session_click(item, 0)
+    assert focused == [session]
+    assert opened == []
+
+
+def test_open_session_indicators_include_detached_windows(qapp):
+    from bifrost_app import BifrostApp
+
+    class Tabs:
+        def __init__(self, widgets):
+            self._widgets = widgets
+
+        def count(self):
+            return len(self._widgets)
+
+        def widget(self, index):
+            return self._widgets[index]
+
+    main_widget = SimpleNamespace(source_session_id=1)
+    detached_widget = SimpleNamespace(source_session_id=2)
+    captured = []
+    app = BifrostApp.__new__(BifrostApp)
+    app.tabs = Tabs([main_widget])
+    app.detached_windows = [SimpleNamespace(tabs=Tabs([detached_widget]))]
+    app.sidebar = SimpleNamespace(set_open_session_ids=lambda ids: captured.append(ids))
+
+    BifrostApp._refresh_open_session_indicators(app)
+
+    assert captured == [{1, 2}]
 
 
 def test_show_and_hide_sftp_pane(sidebar):

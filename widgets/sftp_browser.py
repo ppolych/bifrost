@@ -64,6 +64,7 @@ class SftpBrowser(
     file_open_with_requested = pyqtSignal(str, str)
     file_system_open_requested = pyqtSignal(str)
     path_to_terminal_requested = pyqtSignal(str)
+    column_widths_changed = pyqtSignal(list)
 
     def __init__(self):
         super().__init__()
@@ -125,7 +126,9 @@ class SftpBrowser(
         # Tree
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Name", "Size", "Modified"])
+        self.tree.header().setStretchLastSection(False)
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.tree.header().sectionResized.connect(self._emit_column_widths_changed)
         self.tree.setIconSize(QSize(16, 16))
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -174,6 +177,25 @@ class SftpBrowser(
         self.layout.addWidget(self.transfer_queue)
 
         self._set_buttons_enabled(False)
+
+    def column_widths(self) -> list[int]:
+        return [self.tree.columnWidth(i) for i in range(self.tree.columnCount())]
+
+    def set_column_widths(self, widths: list[int]) -> None:
+        if not isinstance(widths, list) or len(widths) != self.tree.columnCount():
+            return
+        header = self.tree.header()
+        for i, width in enumerate(widths):
+            try:
+                value = int(width)
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+                self.tree.setColumnWidth(i, value)
+
+    def _emit_column_widths_changed(self, *_args) -> None:
+        self.column_widths_changed.emit(self.column_widths())
 
     # ----- attach / detach -----
 

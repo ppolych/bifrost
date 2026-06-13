@@ -93,11 +93,15 @@ class SftpContextMixin:
         if is_dir:
             parent = QFileDialog.getExistingDirectory(self, "Download folder to", "")
             if parent:
-                self._start_transfer("download", os.path.join(parent, name), remote)
+                queue = self._resolve_download_conflicts([(os.path.join(parent, name), remote)])
+                if queue:
+                    self._start_transfer("download", queue[0][0], queue[0][1])
         else:
             local, _ = QFileDialog.getSaveFileName(self, "Save as", name)
             if local:
-                self._start_transfer("download", local, remote)
+                queue = self._resolve_download_conflicts([(local, remote)])
+                if queue:
+                    self._start_transfer("download", queue[0][0], queue[0][1])
 
     def _download_remote_items(self, items: list[tuple[str, bool]]) -> None:
         if self.sftp is None or self._transfer is not None or not items:
@@ -113,6 +117,9 @@ class SftpContextMixin:
             (os.path.join(parent, _safe_local_name(posixpath.basename(remote))), remote)
             for remote, _is_dir in items
         ]
+        queue = self._resolve_download_conflicts(queue)
+        if not queue:
+            return
         first_local, first_remote = queue[0]
         self._download_queue.extend(queue[1:])
         for local, remote in queue[1:]:

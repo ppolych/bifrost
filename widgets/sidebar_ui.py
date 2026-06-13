@@ -5,7 +5,6 @@ from PyQt6.QtWidgets import (
 )
 
 from core.icons import named_icon
-from widgets.docker_dashboard import DockerDashboard
 from widgets.local_servers import LocalServersManager
 from widgets.sftp_browser import SftpBrowser
 from widgets.snippet_manager import SnippetWidget
@@ -153,11 +152,7 @@ def build_builtin_tabs(sidebar) -> None:
     sidebar.tabs.addTab(sidebar.snippet_widget, named_icon("list_alt.svg"), "")
     sidebar.tabs.setTabToolTip(5, "Command Snippets")
 
-    sidebar.docker_widget = DockerDashboard()
-    sidebar.docker_widget.container_shell_requested.connect(
-        sidebar.container_shell_requested.emit
-    )
-    sidebar.tabs.addTab(sidebar.docker_widget, named_icon("desktop_windows.svg"), "")
+    sidebar._add_lazy_tab(named_icon("desktop_windows.svg"), "Docker Containers", sidebar._build_docker_tab)
     sidebar.tabs.setTabToolTip(6, "Docker Containers")
 
     sidebar.remote_ops_widget = RemoteOpsWidget()

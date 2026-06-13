@@ -101,6 +101,7 @@ def default_settings() -> dict:
         "confirm_multiline_paste": True,
         "confirm_large_paste": True,
         "large_paste_threshold": 2000,
+        "bracketed_paste": True,
         "auto_log": False,
         "log_directory": "logs",
         "strip_newlines_on_paste": False,  # convert CRLF/CR to a single newline before writing to PTY
@@ -115,6 +116,7 @@ def default_settings() -> dict:
         "window_geometry": "",          # opaque hex blob from QMainWindow.saveGeometry()
         "main_splitter_sizes": [],       # sidebar / terminal split
         "sidebar_splitter_sizes": [],    # sidebar tabs / SFTP split
+        "sftp_column_widths": [],        # Name / Size / Modified column widths
         "last_sidebar_tab": 0,
 
         # SSH defaults
@@ -155,7 +157,7 @@ def _sanitize_settings(settings: dict, defaults: dict) -> None:
         "show_dashboard", "auto_sftp", "sftp_show_hidden", "confirm_close_tab",
         "confirm_quit_with_sessions", "confirm_workspace_reconnect",
         "cursor_blink", "bold_is_bright", "right_click_paste", "copy_on_select",
-        "confirm_multiline_paste", "confirm_large_paste", "auto_log", "strip_newlines_on_paste",
+        "confirm_multiline_paste", "confirm_large_paste", "bracketed_paste", "auto_log", "strip_newlines_on_paste",
         "restore_window_geometry", "ssh_agent_forwarding", "ssh_tcp_keepalive",
     ):
         settings[key] = _coerce_bool(settings.get(key), defaults[key])
@@ -182,6 +184,10 @@ def _sanitize_settings(settings: dict, defaults: dict) -> None:
     settings["sidebar_splitter_sizes"] = _coerce_int_list(
         settings.get("sidebar_splitter_sizes"),
         defaults["sidebar_splitter_sizes"],
+    )
+    settings["sftp_column_widths"] = _coerce_int_list(
+        settings.get("sftp_column_widths"),
+        defaults["sftp_column_widths"],
     )
     if settings.get("theme") not in THEME_NAMES:
         settings["theme"] = DEFAULT_THEME

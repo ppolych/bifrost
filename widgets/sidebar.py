@@ -10,6 +10,7 @@ from widgets.sidebar_ui import build_sidebar_ui
 class Sidebar(QWidget, SidebarTreeMixin):
     tool_triggered = pyqtSignal(str)
     session_activated = pyqtSignal(dict)       # full session dict
+    session_focus_requested = pyqtSignal(dict) # focus an already-open session tab
     favorite_toggled = pyqtSignal(dict, bool)  # session, new state
     forget_credentials = pyqtSignal(dict)      # forget saved password / passphrase
     wake_on_lan = pyqtSignal(dict)             # send a WoL magic packet for this session
@@ -27,9 +28,43 @@ class Sidebar(QWidget, SidebarTreeMixin):
         self.macro_engine = macro_engine
         self.snippet_manager = snippet_manager
         self.is_collapsed = False
+        self._open_session_ids: set[int] = set()
+        self._lazy_tab_builders: dict[int, object] = {}
+        self._docker_widget = None
         build_sidebar_ui(self)
+        self.tabs.currentChanged.connect(self._ensure_lazy_tab)
         self.refresh_sessions()
         self.refresh_macros()
+
+    def _add_lazy_tab(self, icon, tooltip: str, builder) -> None:
+        placeholder = QWidget()
+        placeholder.setMinimumWidth(0)
+        index = self.tabs.addTab(placeholder, icon, "")
+        self.tabs.setTabToolTip(index, tooltip)
+        self._lazy_tab_builders[index] = (builder, icon, tooltip)
+
+    def _ensure_lazy_tab(self, index: int):
+        entry = self._lazy_tab_builders.pop(index, None)
+        if entry is None:
+            return self.tabs.widget(index)
+        builder, icon, tooltip = entry
+        widget = builder()
+        self.tabs.removeTab(index)
+        self.tabs.insertTab(index, widget, icon, "")
+        self.tabs.setTabToolTip(index, tooltip)
+        self.tabs.setCurrentIndex(index)
+        return widget
+
+    def _build_docker_tab(self):
+        from widgets.docker_dashboard import DockerDashboard
+
+        self._docker_widget = DockerDashboard()
+        self._docker_widget.container_shell_requested.connect(self.container_shell_requested.emit)
+        self.docker_widget = self._docker_widget
+        return self._docker_widget
+
+    def docker_widget_if_loaded(self):
+        return self._docker_widget
 
     def toggle_collapse(self):
         self.is_collapsed = not self.is_collapsed
@@ -60,8 +95,15 @@ class Sidebar(QWidget, SidebarTreeMixin):
             act_group = QAction("New top-level group…", self)
             act_group.triggered.connect(lambda: self._prompt_new_group([]))
             menu.addAction(act_group)
+            collapse_all = QAction("Collapse all folders", self)
+            collapse_all.triggered.connect(self.collapse_all_folders)
+            menu.addAction(collapse_all)
         elif session:
             parent_path = list(item.data(0, self.PATH_ROLE) or [])
+            if item.data(0, self.SESSION_OPEN_ROLE):
+                focus = QAction("Focus open tab", self)
+                focus.triggered.connect(lambda: self.session_focus_requested.emit(session))
+                menu.addAction(focus)
             is_fav = bool(session.get("favorite"))
             toggle = QAction("Remove favorite" if is_fav else "Mark as favorite", self)
             toggle.triggered.connect(lambda: self._toggle_favorite(item))
@@ -123,6 +165,9 @@ class Sidebar(QWidget, SidebarTreeMixin):
             dup = QAction("Duplicate group", self)
             dup.triggered.connect(lambda: self._duplicate_folder(folder_path))
             menu.addAction(dup)
+            collapse_all = QAction("Collapse all folders", self)
+            collapse_all.triggered.connect(self.collapse_all_folders)
+            menu.addAction(collapse_all)
             delete = QAction("Delete group...", self)
             delete.triggered.connect(lambda: self._delete_folder(folder_path))
             menu.addAction(delete)
@@ -130,6 +175,9 @@ class Sidebar(QWidget, SidebarTreeMixin):
             return
 
         menu.exec(self.tree.mapToGlobal(pos))
+
+    def collapse_all_folders(self) -> None:
+        self.tree.collapseAll()
 
     # ----- group / session mutation helpers -----
 

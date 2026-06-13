@@ -133,6 +133,10 @@ class SettingsGeneralTabsMixin:
         self.strip_newlines_cb.setChecked(self.settings.get("strip_newlines_on_paste", False))
         layout.addRow(self.strip_newlines_cb)
 
+        self.bracketed_paste_cb = QCheckBox("Use bracketed paste mode")
+        self.bracketed_paste_cb.setChecked(self.settings.get("bracketed_paste", True))
+        layout.addRow(self.bracketed_paste_cb)
+
         self.confirm_multiline_paste_cb = QCheckBox("Confirm before pasting multiple lines")
         self.confirm_multiline_paste_cb.setChecked(self.settings.get("confirm_multiline_paste", True))
         layout.addRow(self.confirm_multiline_paste_cb)

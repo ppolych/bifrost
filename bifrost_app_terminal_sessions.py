@@ -52,6 +52,7 @@ class BifrostTerminalSessionsMixin:
             backend=backend,
             ssh_session=session if backend is not None else None,
         )
+        container.source_session_id = id(session) if isinstance(session, dict) else None
         container.detach_requested.connect(self.detach_terminal)
         self.tabs.addTab(container, prefix + name)
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
@@ -60,6 +61,7 @@ class BifrostTerminalSessionsMixin:
         if self.multi_exec_enabled:
             self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
+        self._refresh_open_session_indicators()
 
     def _settings_for_session(self, session: dict | None) -> dict:
         settings = dict(self.settings)
@@ -92,9 +94,11 @@ class BifrostTerminalSessionsMixin:
             return  # user cancelled
         name = session.get("name") or f"{host}:{port}"
         viewer = VncViewer(host, port, password or None, settings=self.settings)
+        viewer.source_session_id = id(session) if isinstance(session, dict) else None
         self.tabs.addTab(viewer, "🖥 " + name)
         self.tabs.setCurrentIndex(self.tabs.count() - 1)
         self.session_manager.add_to_recents(name)
+        self._refresh_open_session_indicators()
 
     def open_rdp_session(self, session: dict):
         name = session.get("name") or f"{session.get('host') or 'localhost'}:{session.get('port') or 3389}"
@@ -277,6 +281,8 @@ class BifrostTerminalSessionsMixin:
             new_win.tabs.addTab(container, name)
             new_win.show()
             self.detached_windows.append(new_win)
+            new_win.destroyed.connect(lambda *_: self._refresh_open_session_indicators())
+            self._refresh_open_session_indicators()
 
     def on_split_requested(self, orientation):
         current = self.tabs.currentWidget()

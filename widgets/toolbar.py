@@ -1,10 +1,12 @@
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QStringListModel, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QCompleter,
     QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QToolBar,
     QWidget,
 )
@@ -20,6 +22,16 @@ QUICK_CONNECT_METHODS = [
     ("VNC", "VNC", {"type": "VNC"}),
     ("Local", "Local", {"type": "Local"}),
     ("WSL", "WSL", {"type": "WSL"}),
+]
+
+QUICK_CONNECT_EXAMPLES = [
+    "ssh user@host",
+    "ssh user@host -p 2222",
+    "telnet host 2323",
+    "rdp host:3389",
+    "vnc host:5901",
+    "wsl Ubuntu",
+    "local /bin/zsh",
 ]
 
 
@@ -90,6 +102,10 @@ class MainToolBar(QToolBar):
 
         self.qc_input = QLineEdit()
         self.qc_input.setFixedWidth(200)
+        self.qc_completer = QCompleter(self)
+        self.qc_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.qc_completer.setModel(QStringListModel(QUICK_CONNECT_EXAMPLES, self.qc_completer))
+        self.qc_input.setCompleter(self.qc_completer)
         self.qc_input.returnPressed.connect(self.on_qc_enter)
         qc_layout.addWidget(self.qc_input)
         self._update_placeholder()
@@ -126,7 +142,24 @@ class MainToolBar(QToolBar):
 
     def on_qc_enter(self):
         text = self.qc_input.text().strip()
+        if text.lower() in {"help", "?"}:
+            self.show_quick_connect_help()
+            return
         if not text and self.qc_method.currentData() not in ("WSL", "Local"):
             return
         self.quick_connect_triggered.emit(self.qc_method.currentData(), text)
         self.qc_input.clear()
+
+    def show_quick_connect_help(self):
+        QMessageBox.information(
+            self,
+            "Quick Connect",
+            "Examples:\n"
+            "ssh user@host\n"
+            "ssh user@host -p 2222\n"
+            "telnet host 2323\n"
+            "rdp host:3389\n"
+            "vnc host:5901\n"
+            "wsl Ubuntu\n"
+            "local /bin/zsh",
+        )

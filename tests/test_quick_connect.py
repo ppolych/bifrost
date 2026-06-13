@@ -49,6 +49,26 @@ def test_placeholder_changes_with_method(toolbar):
     assert len(placeholders) == toolbar.qc_method.count()
 
 
+def test_quick_connect_has_live_command_completions(toolbar):
+    model = toolbar.qc_completer.model()
+    values = [model.data(model.index(i, 0)) for i in range(model.rowCount())]
+    assert "ssh user@host -p 2222" in values
+    assert "local /bin/zsh" in values
+
+
+def test_quick_connect_help_does_not_emit(toolbar, monkeypatch):
+    received = []
+    shown = []
+    toolbar.quick_connect_triggered.connect(lambda m, t: received.append((m, t)))
+    monkeypatch.setattr(toolbar, "show_quick_connect_help", lambda: shown.append(True))
+
+    toolbar.qc_input.setText("Help")
+    toolbar.on_qc_enter()
+
+    assert shown == [True]
+    assert received == []
+
+
 def _bare_app():
     """Construct an BifrostApp stub that bypasses __init__ (Qt + SessionManager + …)."""
     from bifrost_app import BifrostApp
@@ -69,6 +89,38 @@ def test_quick_connect_ssh_parses_user_host_port(qapp):
     assert received["ssh_session"]["user"] == "alice"
     assert received["ssh_session"]["port"] == 2222
     assert received["name"] == "alice@10.0.0.5"
+
+
+def test_quick_connect_live_ssh_command_overrides_method(qapp):
+    from bifrost_app import BifrostApp, parse_quick_connect_command
+
+    assert parse_quick_connect_command("Local", "ssh alice@host -p 2222") == (
+        "SSH", "alice@host:2222",
+    )
+
+    app = _bare_app()
+    received = {}
+    app.new_terminal_tab = lambda name, **k: received.update(k, name=name)
+
+    BifrostApp.on_quick_connect(app, "Local", "ssh alice@host -p 2222")
+
+    assert received["ssh_session"]["host"] == "host"
+    assert received["ssh_session"]["user"] == "alice"
+    assert received["ssh_session"]["port"] == 2222
+
+
+def test_quick_connect_live_telnet_command(qapp):
+    from bifrost_app import BifrostApp
+
+    app = _bare_app()
+    received = {}
+    app.new_terminal_tab = lambda name, **k: received.update(k, name=name)
+
+    BifrostApp.on_quick_connect(app, "SSH", "telnet bbs.example.com 2323")
+
+    assert received["kind"] == "Telnet"
+    assert received["host"] == "bbs.example.com"
+    assert received["port"] == 2323
 
 
 def test_quick_connect_ssh_uses_default_user_when_omitted(qapp):

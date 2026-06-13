@@ -68,6 +68,52 @@ def _remote_display_name(remote_path: str, default: str = "file") -> str:
     return name or default
 
 
+def parse_quick_connect_command(method: str, text: str) -> tuple[str, str]:
+    raw = (text or "").strip()
+    if not raw:
+        return method, raw
+    try:
+        parts = shlex.split(raw)
+    except ValueError:
+        return method, raw
+    if not parts:
+        return method, raw
+    command = parts[0].lower()
+    if command not in {"ssh", "telnet", "rdp", "vnc", "wsl", "local"}:
+        return method, raw
+    args = parts[1:]
+    if command == "ssh":
+        host = ""
+        port = ""
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg in {"-p", "-P"} and i + 1 < len(args):
+                port = args[i + 1]
+                i += 2
+                continue
+            if arg.startswith("-p") and arg[2:].isdigit():
+                port = arg[2:]
+                i += 1
+                continue
+            if not arg.startswith("-") and not host:
+                host = arg
+            i += 1
+        if host and port and ":" not in host:
+            host = f"{host}:{port}"
+        return "SSH", host
+    if command in {"telnet", "rdp"}:
+        target = args[0] if args else ""
+        if len(args) > 1 and args[1].isdigit() and ":" not in target:
+            target = f"{target}:{args[1]}"
+        return command.upper() if command == "rdp" else "Telnet", target
+    if command == "vnc":
+        return "VNC", args[0] if args else ""
+    if command == "wsl":
+        return "WSL", args[0] if args else ""
+    return "Local", " ".join(args)
+
+
 def _safe_temp_suffix(remote_path: str) -> str:
     """Build a suffix safe for tempfile paths on Linux, Windows, and macOS."""
     name = _remote_display_name(remote_path)
@@ -111,4 +157,3 @@ def _font_from_override(value: str, fallback: QFont) -> QFont:
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]
-

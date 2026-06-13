@@ -138,6 +138,7 @@ def test_default_settings_includes_new_keys():
         "ssh_default_auth", "ssh_startup_command", "credential_save_policy",
         "credential_provider", "ssh_default_key_path",
         "confirm_multiline_paste", "confirm_large_paste", "large_paste_threshold",
+        "bracketed_paste",
     }
     assert expected.issubset(s.keys())
 

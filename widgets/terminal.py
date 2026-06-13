@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import QAbstractScrollArea, QApplication
 from core.platform_utils import default_monospace_font
 from core.terminal_backend import TerminalBackend, TerminalReader
 from widgets.sftp_utils import safe_local_name
-from widgets.terminal_clipboard import TerminalClipboardMixin
+from widgets.terminal_clipboard import TerminalClipboardMixin, detect_paste_risks
 from widgets.terminal_keyboard import TerminalKeyboardMixin
 from widgets.terminal_paint import TerminalPaintMixin
 from widgets.terminal_palette import (
@@ -125,7 +125,7 @@ class TerminalWidget(
 
         self._last_search_text = ""
         self._search_index = -1
-        self._bracketed_paste = False
+        self._bracketed_paste = bool(self.settings.get("bracketed_paste", True))
 
         self._apply_font_metrics()
         self.apply_settings()

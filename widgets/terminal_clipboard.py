@@ -1,9 +1,50 @@
 import logging
+import re
+import unicodedata
 
 from PyQt6.QtGui import QAction, QGuiApplication
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox
 
 log = logging.getLogger(__name__)
+
+_PIPE_TO_SHELL_RE = re.compile(
+    r"\b(?:curl|wget)\b[^\n|;&]*(?:\||\)\s*\|\s*)\s*(?:sudo\s+)?(?:sh|bash|zsh|fish|python|python3|perl|ruby)\b",
+    re.IGNORECASE,
+)
+_PROFILE_REDIRECT_RE = re.compile(
+    r"(?:>|>>)\s*(?:~|\$HOME)?/?(?:\.bashrc|\.bash_profile|\.profile|\.zshrc|\.zprofile|\.config/fish/config\.fish)\b",
+    re.IGNORECASE,
+)
+_UNPACK_ROOT_RE = re.compile(
+    r"\b(?:tar|bsdtar)\b[^\n;&|]*(?:\s-C\s*/|\s--directory[=\s]*/)|\b(?:unzip|7z)\b[^\n;&|]*(?:\s-d\s*/)",
+    re.IGNORECASE,
+)
+_ZERO_WIDTH_CHARS = {
+    "\u200b", "\u200c", "\u200d", "\u2060", "\ufeff", "\u202a", "\u202b",
+    "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069",
+}
+_UNUSUAL_SPACES = {"\u00a0", "\u2007", "\u202f"}
+
+
+def detect_paste_risks(text: str) -> list[str]:
+    risks: list[str] = []
+    if any(ch in text for ch in _ZERO_WIDTH_CHARS | _UNUSUAL_SPACES):
+        risks.append("contains zero-width or non-standard space characters")
+    if _PIPE_TO_SHELL_RE.search(text):
+        risks.append("downloads content and pipes it directly to a shell")
+    if _PROFILE_REDIRECT_RE.search(text):
+        risks.append("redirects output into a shell startup profile")
+    if _UNPACK_ROOT_RE.search(text):
+        risks.append("extracts an archive into the filesystem root")
+    has_ascii_letter = any("A" <= ch <= "Z" or "a" <= ch <= "z" for ch in text)
+    if has_ascii_letter:
+        for ch in text:
+            if ord(ch) < 128:
+                continue
+            if unicodedata.name(ch, "").startswith(("CYRILLIC ", "GREEK ")):
+                risks.append("mixes Latin text with look-alike Unicode letters")
+                break
+    return risks
 
 
 class TerminalClipboardMixin:
@@ -125,10 +166,14 @@ class TerminalClipboardMixin:
             text = text.replace("\r\n", "\n").replace("\r", "\n")
         if self._confirm_paste_required(text):
             lines = text.count("\n") + 1
+            risks = detect_paste_risks(text)
+            details = ""
+            if risks:
+                details = "\n\nPotential risks:\n" + "\n".join(f"- {risk}" for risk in risks)
             reply = QMessageBox.question(
                 self,
                 "Paste into terminal",
-                f"Paste {len(text)} characters across {lines} line{'s' if lines != 1 else ''}?",
+                f"Paste {len(text)} characters across {lines} line{'s' if lines != 1 else ''}?{details}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -142,6 +187,8 @@ class TerminalClipboardMixin:
         return text
 
     def _confirm_paste_required(self, text: str) -> bool:
+        if detect_paste_risks(text):
+            return True
         if self.settings.get("confirm_multiline_paste", True) and "\n" in text:
             return True
         if self.settings.get("confirm_large_paste", True):

@@ -130,6 +130,7 @@ class SettingsDialog(QDialog, SettingsGeneralTabsMixin, SettingsConnectionTabsMi
             "right_click_paste": self.rc_paste_cb.isChecked(),
             "copy_on_select": self.copy_on_select_cb.isChecked(),
             "strip_newlines_on_paste": self.strip_newlines_cb.isChecked(),
+            "bracketed_paste": self.bracketed_paste_cb.isChecked(),
             "confirm_multiline_paste": self.confirm_multiline_paste_cb.isChecked(),
             "confirm_large_paste": self.confirm_large_paste_cb.isChecked(),
             "large_paste_threshold": self.large_paste_threshold_sb.value(),

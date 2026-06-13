@@ -1,3 +1,4 @@
+import os
 import posixpath
 
 import paramiko
@@ -100,3 +101,62 @@ class SftpConflictMixin:
             if not self._remote_exists(candidate):
                 return candidate
         return posixpath.join(directory, f"{stem} copy{ext}")
+
+    def _resolve_download_conflicts(self, queue: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        resolved: list[tuple[str, str]] = []
+        apply_choice: str | None = None
+        for local, remote in queue:
+            if not os.path.exists(local):
+                resolved.append((local, remote))
+                continue
+            choice = apply_choice
+            apply_to_all = False
+            if choice is None:
+                choice, apply_to_all = self._prompt_download_conflict(local)
+            if choice == "cancel":
+                return []
+            if choice == "skip":
+                if apply_to_all:
+                    apply_choice = "skip"
+                continue
+            if choice == "overwrite":
+                if apply_to_all:
+                    apply_choice = "overwrite"
+                resolved.append((local, remote))
+                continue
+            if choice == "rename":
+                resolved.append((self._next_available_local_name(local), remote))
+        return resolved
+
+    def _prompt_download_conflict(self, local: str) -> tuple[str, bool]:
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Local item exists")
+        msg.setText(f"'{os.path.basename(local)}' already exists.")
+        msg.setInformativeText("Choose how to handle this download.")
+        overwrite = msg.addButton("Overwrite", QMessageBox.ButtonRole.AcceptRole)
+        skip = msg.addButton("Skip", QMessageBox.ButtonRole.DestructiveRole)
+        rename = msg.addButton("Rename", QMessageBox.ButtonRole.ActionRole)
+        cancel = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        checkbox = QCheckBox("Apply to remaining conflicts")
+        msg.setCheckBox(checkbox)
+        msg.setDefaultButton(overwrite)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked is overwrite:
+            return "overwrite", checkbox.isChecked()
+        if clicked is skip:
+            return "skip", checkbox.isChecked()
+        if clicked is rename:
+            return "rename", False
+        if clicked is cancel:
+            return "cancel", False
+        return "cancel", False
+
+    def _next_available_local_name(self, local: str) -> str:
+        directory, filename = os.path.split(local)
+        stem, ext = os.path.splitext(filename)
+        for i in range(2, 1000):
+            candidate = os.path.join(directory, f"{stem} ({i}){ext}")
+            if not os.path.exists(candidate):
+                return candidate
+        return os.path.join(directory, f"{stem} copy{ext}")
