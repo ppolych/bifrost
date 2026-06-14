@@ -87,7 +87,7 @@ class SidebarTreeMixin:
                 item.setData(0, self.SESSION_OPEN_ROLE, is_open)
                 tooltip = _session_tooltip(session)
                 if is_open:
-                    tooltip += "<br>Open: double-click to focus the tab"
+                    tooltip += "<br>Open: use the context menu to focus an existing tab"
                 item.setToolTip(0, tooltip)
 
     def _filter_sessions(self, text: str) -> None:
@@ -118,9 +118,6 @@ class SidebarTreeMixin:
     def on_session_click(self, item, column):
         session = self._session_for_item(item)
         if session:
-            if item.data(0, self.SESSION_OPEN_ROLE):
-                self.session_focus_requested.emit(session)
-                return
             self.session_activated.emit(session)
 
     def _on_item_expanded(self, item):

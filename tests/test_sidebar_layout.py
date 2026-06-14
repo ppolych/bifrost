@@ -135,7 +135,7 @@ def test_session_items_keep_live_session_object(sidebar):
     assert sidebar._session_for_item(second) is sidebar.session_manager.sessions["User sessions"][1]
 
 
-def test_open_session_indicator_focuses_existing_session(sidebar):
+def test_open_session_indicator_still_opens_new_session(sidebar):
     session = {"name": "prod", "type": "SSH", "host": "one"}
     sidebar.session_manager.sessions = {"User sessions": [session]}
     sidebar.set_open_session_ids({id(session)})
@@ -149,8 +149,9 @@ def test_open_session_indicator_focuses_existing_session(sidebar):
 
     assert item.text(0).startswith("● ")
     sidebar.on_session_click(item, 0)
-    assert focused == [session]
-    assert opened == []
+    assert focused == []
+    assert opened == [session]
+    assert "context menu to focus" in item.toolTip(0)
 
 
 def test_open_session_indicators_include_detached_windows(qapp):

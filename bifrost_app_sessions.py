@@ -8,8 +8,6 @@ class BifrostSessionsMixin:
 
     def on_session_activated(self, session: dict):
         """Route a session opening by its explicit `type`, not by name sniffing."""
-        if self.focus_session_tab(session):
-            return
         name = session.get("name") or "Session"
         proto = session.get("type")
         if proto == "WSL":

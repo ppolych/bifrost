@@ -91,6 +91,26 @@ def test_quick_connect_ssh_parses_user_host_port(qapp):
     assert received["name"] == "alice@10.0.0.5"
 
 
+def test_saved_session_activation_allows_duplicate_tabs(qapp):
+    from bifrost_app import BifrostApp
+
+    app = _bare_app()
+    opened = []
+
+    def fail_if_auto_focus(_session):
+        raise AssertionError("should not auto-focus")
+
+    app.focus_session_tab = fail_if_auto_focus
+    app.new_terminal_tab = lambda name, **kwargs: opened.append((name, kwargs))
+
+    session = {"name": "prod", "type": "SSH", "host": "vps.example.com"}
+    BifrostApp.on_session_activated(app, session)
+    BifrostApp.on_session_activated(app, session)
+
+    assert [name for name, _kwargs in opened] == ["prod", "prod"]
+    assert [kwargs["ssh_session"] for _name, kwargs in opened] == [session, session]
+
+
 def test_quick_connect_live_ssh_command_overrides_method(qapp):
     from bifrost_app import BifrostApp, parse_quick_connect_command
 
