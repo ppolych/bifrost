@@ -1,4 +1,5 @@
 import posixpath
+import stat
 from unittest.mock import MagicMock
 
 
@@ -35,3 +36,51 @@ def test_sftp_path_navigation_uses_posix(qapp):
 
     browser.detach()
     assert not browser.is_attached()
+
+
+def test_sftp_listing_shows_parent_directory_row(qapp):
+    from PyQt6.QtCore import Qt
+    from widgets.sftp_browser import SftpBrowser
+
+    attr = type("Attr", (), {"filename": "src", "st_mode": stat.S_IFDIR | 0o755, "st_size": 0, "st_mtime": 0})()
+    browser = SftpBrowser()
+    browser.sftp = MagicMock()
+    browser.sftp.listdir_attr.return_value = [attr]
+    browser.cwd = "/home/user"
+
+    browser._refresh()
+
+    parent = browser.tree.topLevelItem(0)
+    child = browser.tree.topLevelItem(1)
+    assert parent.text(0) == ".."
+    assert parent.data(0, Qt.ItemDataRole.UserRole)["is_parent"] is True
+    assert child.text(0) == "src"
+    assert browser._remote_path_for_item(parent) is None
+
+
+def test_sftp_parent_directory_row_goes_up_on_double_click(qapp):
+    from widgets.sftp_browser import SftpBrowser
+
+    browser = SftpBrowser()
+    browser.sftp = MagicMock()
+    browser.sftp.listdir_attr.return_value = []
+    browser.cwd = "/home/user/project"
+    browser._refresh()
+
+    parent = browser.tree.topLevelItem(0)
+    browser._on_double_click(parent, 0)
+
+    assert browser.cwd == "/home/user"
+
+
+def test_sftp_root_does_not_show_parent_directory_row(qapp):
+    from widgets.sftp_browser import SftpBrowser
+
+    browser = SftpBrowser()
+    browser.sftp = MagicMock()
+    browser.sftp.listdir_attr.return_value = []
+    browser.cwd = "/"
+
+    browser._refresh()
+
+    assert browser.tree.topLevelItemCount() == 0

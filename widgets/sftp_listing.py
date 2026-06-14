@@ -44,6 +44,11 @@ class SftpListingMixin:
             QMessageBox.warning(self, "SFTP", f"Failed to list {self.cwd}:\n{e}")
             return
 
+        if self.cwd not in ("", "/"):
+            parent = QTreeWidgetItem(self.tree, ["..", "<DIR>", ""])
+            parent.setIcon(0, self._dir_icon)
+            parent.setData(0, Qt.ItemDataRole.UserRole, {"is_dir": True, "is_parent": True})
+
         # Directories first, then files; both alphabetically.
         def sort_key(attr):
             is_dir = stat.S_ISDIR(attr.st_mode or 0)
@@ -68,6 +73,9 @@ class SftpListingMixin:
         if self.sftp is None:
             return
         meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        if meta.get("is_parent"):
+            self._go_up()
+            return
         if meta.get("is_dir"):
             new_path = posixpath.normpath(posixpath.join(self.cwd, meta["name"]))
             self.cwd = new_path if new_path else "/"
@@ -112,6 +120,6 @@ class SftpListingMixin:
             return None
         meta = item.data(0, Qt.ItemDataRole.UserRole) or {}
         name = meta.get("name")
-        if not name:
+        if not name or meta.get("is_parent"):
             return None
         return posixpath.join(self.cwd, name)
