@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QAbstractItemView,
+    QLineEdit,
     QStyle,
     QToolBar,
     QTreeWidget,
@@ -118,10 +119,14 @@ class SftpBrowser(
         self.download_btn.clicked.connect(self._download)
         self.cancel_btn.clicked.connect(self._cancel_transfer)
 
-        # Path label
-        self.path_label = QLabel("Not connected")
-        self.path_label.setStyleSheet("padding: 4px;")
-        self.layout.addWidget(self.path_label)
+        # Remote path entry
+        self.path_input = QLineEdit("Not connected")
+        self.path_input.setToolTip("Remote path")
+        self.path_input.setClearButtonEnabled(True)
+        self.path_input.returnPressed.connect(self._navigate_to_path_input)
+        self.path_input.setEnabled(False)
+        self.path_label = self.path_input
+        self.layout.addWidget(self.path_input)
 
         # Tree
         self.tree = QTreeWidget()
@@ -254,6 +259,7 @@ class SftpBrowser(
     def _set_buttons_enabled(self, enabled: bool) -> None:
         for b in (self.up_btn, self.refresh_btn, self.upload_btn, self.upload_folder_btn, self.new_folder_btn, self.download_btn):
             b.setEnabled(enabled)
+        self.path_input.setEnabled(enabled)
         self.cancel_btn.setEnabled(self._transfer is not None)
 
 

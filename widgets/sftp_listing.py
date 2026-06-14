@@ -89,6 +89,29 @@ class SftpListingMixin:
         self.cwd = posixpath.normpath(posixpath.join(self.cwd, ".."))
         self._refresh()
 
+    def _navigate_to_path_input(self) -> None:
+        if self.sftp is None:
+            self.path_label.setText("Not connected")
+            return
+        text = self.path_input.text().strip()
+        if not text:
+            self.path_label.setText(self.cwd)
+            return
+        target = text if text.startswith("/") else posixpath.join(self.cwd, text)
+        target = posixpath.normpath(target) or "/"
+        try:
+            attr = self.sftp.stat(target)
+        except (OSError, paramiko.SSHException) as e:
+            self.path_label.setText(self.cwd)
+            QMessageBox.warning(self, "SFTP", f"Failed to open {target}:\n{e}")
+            return
+        if not stat.S_ISDIR(attr.st_mode or 0):
+            self.path_label.setText(self.cwd)
+            QMessageBox.warning(self, "SFTP", f"{target} is not a directory.")
+            return
+        self.cwd = target
+        self._refresh()
+
     # ----- transfers -----
 
     def _selected_remote_path(self) -> Optional[str]:

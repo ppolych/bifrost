@@ -84,3 +84,54 @@ def test_sftp_root_does_not_show_parent_directory_row(qapp):
     browser._refresh()
 
     assert browser.tree.topLevelItemCount() == 0
+
+
+def test_sftp_path_entry_navigates_to_absolute_directory(qapp):
+    from widgets.sftp_browser import SftpBrowser
+
+    browser = SftpBrowser()
+    browser.sftp = MagicMock()
+    browser.sftp.stat.return_value = type("Attr", (), {"st_mode": stat.S_IFDIR | 0o755})()
+    browser.sftp.listdir_attr.return_value = []
+    browser.cwd = "/home/user"
+
+    browser.path_input.setText("/var/log")
+    browser._navigate_to_path_input()
+
+    assert browser.cwd == "/var/log"
+    assert browser.path_input.text() == "/var/log"
+
+
+def test_sftp_path_entry_navigates_to_relative_directory(qapp):
+    from widgets.sftp_browser import SftpBrowser
+
+    browser = SftpBrowser()
+    browser.sftp = MagicMock()
+    browser.sftp.stat.return_value = type("Attr", (), {"st_mode": stat.S_IFDIR | 0o755})()
+    browser.sftp.listdir_attr.return_value = []
+    browser.cwd = "/home/user"
+
+    browser.path_input.setText("../shared")
+    browser._navigate_to_path_input()
+
+    assert browser.cwd == "/home/shared"
+    assert browser.path_input.text() == "/home/shared"
+
+
+def test_sftp_path_entry_rejects_invalid_directory(qapp, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+    from widgets.sftp_browser import SftpBrowser
+
+    warnings = []
+    browser = SftpBrowser()
+    browser.sftp = MagicMock()
+    browser.sftp.stat.side_effect = OSError("missing")
+    browser.cwd = "/home/user"
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args))
+
+    browser.path_input.setText("/missing")
+    browser._navigate_to_path_input()
+
+    assert browser.cwd == "/home/user"
+    assert browser.path_input.text() == "/home/user"
+    assert warnings
