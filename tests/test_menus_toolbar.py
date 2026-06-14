@@ -1,4 +1,5 @@
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence
 
 
 def test_toolbar_is_icon_only(qapp):
@@ -34,6 +35,9 @@ def test_app_menubar_has_desktop_sections(qapp, tmp_path, monkeypatch):
     view_menu = app.menuBar().actions()[2].menu()
     view_actions = [action.text() for action in view_menu.actions() if action.text()]
     assert "Credentials" not in view_actions
+    fullscreen = next(action for action in view_menu.actions() if action.text() == "Toggle full screen")
+    assert fullscreen.shortcut().toString() == QKeySequence("F11").toString()
+    assert fullscreen.shortcutContext() == Qt.ShortcutContext.WindowShortcut
     help_menu = app.menuBar().actions()[-1].menu()
     help_actions = [action.text() for action in help_menu.actions() if action.text()]
     assert help_actions[-1] == "About Bifrost"

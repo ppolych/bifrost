@@ -5,8 +5,8 @@ Session / Connections / View / Tools / Workspaces / Help menus and wires
 every action to methods on the passed BifrostApp instance.
 """
 
-from PyQt6.QtCore import QUrl
-from PyQt6.QtGui import QAction, QDesktopServices
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence
 
 from core.platform_utils import config_dir
 
@@ -89,6 +89,8 @@ def setup_app_menus(window) -> None:
     multi.triggered.connect(lambda: window.toolbar.multi_act.toggle())
     view_menu.addAction(multi)
     fullscreen = QAction("Toggle full screen", window)
+    fullscreen.setShortcut(QKeySequence("F11"))
+    fullscreen.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     fullscreen.triggered.connect(window.toggle_full_screen)
     view_menu.addAction(fullscreen)
 
