@@ -9,7 +9,7 @@ class SnippetManager:
         self.snippets = self.load()
 
     def load(self):
-        return load_json(self.filename, {
+        data = load_json(self.filename, {
             "Docker": {
                 "List Containers": "docker ps -a",
                 "Container Logs": "docker logs -f ",
@@ -29,6 +29,8 @@ class SnippetManager:
                 "Events": "kubectl get events -A --sort-by=.lastTimestamp",
             }
         })
+        # Guard against a corrupted file that parses to a non-dict.
+        return data if isinstance(data, dict) else {}
 
     def save(self):
         try:
@@ -48,10 +50,17 @@ class SnippetManager:
         self.save()
 
     def update_snippet(self, group, old_name, new_group, new_name, command):
-        if self.delete_snippet(group, old_name):
-            self.add_snippet(new_group, new_name, command)
-            return True
-        return False
+        # Validate the replacement *before* deleting the original: otherwise an
+        # empty field would delete the old snippet and then raise, losing it.
+        new_group = (new_group or "").strip()
+        new_name = (new_name or "").strip()
+        command = (command or "").strip()
+        if not new_group or not new_name or not command:
+            raise ValueError("Group, name, and command are required")
+        if not self.delete_snippet(group, old_name):
+            return False
+        self.add_snippet(new_group, new_name, command)
+        return True
 
     def delete_snippet(self, group, name):
         if group in self.snippets and name in self.snippets[group]:

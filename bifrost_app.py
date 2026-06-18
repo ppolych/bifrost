@@ -94,6 +94,8 @@ class BifrostApp(
         self.snippet_manager = SnippetManager()
         self.host_key_prompter = HostKeyPrompter(self)
         self.detached_windows = []
+        # Holds tab widget objects (not indexes) so pin state survives tab
+        # close/reorder, same as cluster_tabs below.
         self.pinned_tabs = set()
         # Cluster = the subset of tabs MultiExec targets when scoped to
         # "Cluster only". Holds container objects (not indexes) so membership

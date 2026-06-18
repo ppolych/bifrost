@@ -124,12 +124,12 @@ class BifrostPersistenceTabsMixin:
             self.status_bar.showMessage(f"Saved session copy {added}", 4000)
 
     def close_tab(self, index):
-        if index in self.pinned_tabs:
-            QMessageBox.information(self, "Tab Pinned", "This tab is pinned and cannot be closed. Unpin it first.")
-            return
         if self.tabs.count() == 0:
             return
         widget = self.tabs.widget(index)
+        if widget in self.pinned_tabs:
+            QMessageBox.information(self, "Tab Pinned", "This tab is pinned and cannot be closed. Unpin it first.")
+            return
         if self.settings.get("confirm_close_tab", True) and self._tab_is_live(widget):
             name = self.tabs.tabText(index)
             reply = QMessageBox.question(
@@ -143,6 +143,7 @@ class BifrostPersistenceTabsMixin:
         if hasattr(widget, "shutdown"):
             widget.shutdown()
         self.cluster_tabs.discard(widget)
+        self.pinned_tabs.discard(widget)
         widget.deleteLater()
         self.tabs.removeTab(index)
         self._refresh_open_session_indicators()

@@ -11,6 +11,23 @@ def test_snippet_manager_update_moves_snippet(tmp_path, monkeypatch):
     assert manager.get_snippet("SSH", "Uptime") == "uptime"
 
 
+def test_update_snippet_rejects_empty_without_losing_original(tmp_path, monkeypatch):
+    import core.snippets as snippets
+    import pytest
+
+    monkeypatch.setattr(snippets, "config_path", lambda name: str(tmp_path / name))
+
+    manager = snippets.SnippetManager()
+    manager.add_snippet("System", "Whoami", "whoami")
+
+    # Editing with an empty field must raise and leave the original intact,
+    # not delete it first and then fail.
+    with pytest.raises(ValueError):
+        manager.update_snippet("System", "Whoami", "System", "", "")
+
+    assert manager.get_snippet("System", "Whoami") == "whoami"
+
+
 def test_default_snippets_include_devops_groups(tmp_path, monkeypatch):
     import core.snippets as snippets
 

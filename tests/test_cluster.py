@@ -147,6 +147,48 @@ def test_closing_tab_drops_cluster_membership(app, monkeypatch):
     assert container not in app.cluster_tabs
 
 
+def test_pinned_tab_stays_protected_after_earlier_tab_closes(app, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    app.new_terminal_tab("t2", command=["true"])
+    app.new_terminal_tab("t3", command=["true"])
+    pinned = app.tabs.widget(2)
+    app.toggle_tab_pin(2)
+    assert pinned in app.pinned_tabs
+
+    # Closing an earlier tab shifts indexes; pin is tracked by widget so the
+    # protection must follow the tab to its new index (the index-based version
+    # desynced here and let the pinned tab be closed).
+    monkeypatch.setitem(app.settings, "confirm_close_tab", False)
+    app.close_tab(0)
+    new_index = app.tabs.indexOf(pinned)
+    assert new_index != -1
+
+    blocked = []
+    monkeypatch.setattr(
+        QMessageBox, "information", staticmethod(lambda *a, **k: blocked.append(a))
+    )
+    app.close_tab(new_index)
+    assert blocked, "closing a pinned tab should be blocked"
+    assert app.tabs.indexOf(pinned) != -1, "pinned tab must not be closed"
+    assert pinned in app.pinned_tabs
+
+
+def test_unpin_removes_protection(app, monkeypatch):
+    from PyQt6.QtWidgets import QMessageBox
+
+    app.new_terminal_tab("t2", command=["true"])
+    container = app.tabs.widget(1)
+    app.toggle_tab_pin(1)
+    app.toggle_tab_pin(1)  # unpin
+    assert container not in app.pinned_tabs
+
+    monkeypatch.setitem(app.settings, "confirm_close_tab", False)
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    app.close_tab(1)
+    assert app.tabs.indexOf(container) == -1
+
+
 def test_multi_exec_bar_has_scope_and_auto_cluster(app):
     assert app.multi_exec_scope.itemData(0) == "all"
     assert app.multi_exec_scope.itemData(1) == "cluster"

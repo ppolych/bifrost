@@ -3,6 +3,25 @@ from PyQt6.QtGui import QColor, QPainter
 from widgets.terminal_palette import DEFAULT_BG, DEFAULT_FG, resolve_color
 
 
+def cells_mergeable(cell, nxt, selected: bool, nxt_selected: bool) -> bool:
+    """Whether two adjacent cells can share one drawText run.
+
+    Every attribute that affects how the cell is *drawn* must be compared here,
+    or a run will be rendered with the wrong attributes. In particular italics
+    is drawn (see paintEvent) and so must be part of the key, alongside the
+    colors, bold, reverse, underscore, and selection state.
+    """
+    return (
+        nxt.fg == cell.fg
+        and nxt.bg == cell.bg
+        and nxt.bold == cell.bold
+        and nxt.italics == cell.italics
+        and nxt.reverse == cell.reverse
+        and nxt.underscore == cell.underscore
+        and nxt_selected == selected
+    )
+
+
 class TerminalPaintMixin:
     def paintEvent(self, event):
         painter = QPainter(self.viewport())
@@ -39,14 +58,7 @@ class TerminalPaintMixin:
                 while run_end < self._cols:
                     nxt = line[run_end]
                     nxt_selected = self._in_selection(row + sel_offset, run_end)
-                    if (
-                        nxt.fg == cell.fg
-                        and nxt.bg == cell.bg
-                        and nxt.bold == cell.bold
-                        and nxt.reverse == cell.reverse
-                        and nxt.underscore == cell.underscore
-                        and nxt_selected == selected
-                    ):
+                    if cells_mergeable(cell, nxt, selected, nxt_selected):
                         run_text.append(nxt.data or " ")
                         run_end += 1
                     else:

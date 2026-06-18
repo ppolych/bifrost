@@ -86,7 +86,7 @@ class BifrostTabsMixin:
         if index == -1: return
         menu = QMenu(self)
         
-        pin_act = QAction("Pin tab" if index not in self.pinned_tabs else "Unpin tab", self)
+        pin_act = QAction("Pin tab" if self.tabs.widget(index) not in self.pinned_tabs else "Unpin tab", self)
         pin_act.triggered.connect(lambda: self.toggle_tab_pin(index))
         menu.addAction(pin_act)
         
@@ -127,17 +127,25 @@ class BifrostTabsMixin:
         menu.exec(self.tabs.mapToGlobal(pos))
 
     def toggle_tab_pin(self, index):
+        # Track the *widget*, not the index: indexes shift when other tabs
+        # close or reorder, which would desync the close guard (mirrors how
+        # cluster_tabs holds container objects).
         # Qt's enum is QTabBar.ButtonPosition (QTabWidget has no TabButton).
         # On the close-button side: None restores the standard close button;
         # an empty widget effectively hides it (pinned).
-        if index in self.pinned_tabs:
-            self.pinned_tabs.remove(index)
+        widget = self.tabs.widget(index)
+        if widget is None:
+            return
+        if widget in self.pinned_tabs:
+            self.pinned_tabs.discard(widget)
             self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, None)
+            pinned = False
         else:
-            self.pinned_tabs.add(index)
+            self.pinned_tabs.add(widget)
             self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, QWidget())
+            pinned = True
         self.status_bar.showMessage(
-            f"Tab {index} {'pinned' if index in self.pinned_tabs else 'unpinned'}", 4000
+            f"Tab {self.tabs.tabText(index)} {'pinned' if pinned else 'unpinned'}", 4000
         )
 
     def rename_tab(self, index):
