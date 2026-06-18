@@ -274,7 +274,10 @@ class BifrostTerminalSessionsMixin:
         index = self.tabs.indexOf(container)
         if index != -1:
             name = self.tabs.tabText(index)
+            # Drop the container from this window's cluster/pin sets — it now
+            # lives in another window, so a lingering reference here is stale.
             self.cluster_tabs.discard(container)
+            self.pinned_tabs.discard(container)
             self.tabs.removeTab(index)
             new_win = BifrostApp(is_detached=True, settings=self.settings)
             new_win.setWindowTitle(f"Detached: {name}")
