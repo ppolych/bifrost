@@ -77,6 +77,19 @@ def test_remote_monitor_health_helpers():
     assert is_stale(0, 5000, now=11) is True
 
 
+def test_mem_percent_derives_from_used_total_gb():
+    from core.remote_monitor_health import health_color, mem_percent
+
+    # Real remote-monitor format is "used/total GB" (no percent sign).
+    assert mem_percent("7.20/8.00 GB") == 90
+    assert health_color(mem_percent("7.20/8.00 GB")) == "#f59e0b"
+    assert mem_percent("0.91/7.56 GB") == 12
+    # A bare percentage still works, and bad input yields no color.
+    assert mem_percent("81%") == 81
+    assert mem_percent("--") is None
+    assert mem_percent("1.0/0 GB") is None
+
+
 def test_remote_monitor_widget_details_and_pause(qapp):
     from widgets.remote_monitor import RemoteMonitorWidget
 

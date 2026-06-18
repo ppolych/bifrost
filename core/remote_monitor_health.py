@@ -14,6 +14,28 @@ def percent_value(text: object) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def mem_percent(text: object) -> int | None:
+    """Used-memory percentage from a 'used/total GB' string.
+
+    The remote monitor reports memory as e.g. "0.91/7.56 GB" (no percent
+    sign), so `percent_value` always returns None for it and the memory cell
+    would never get a health color. Fall back to `percent_value` when the
+    input is a bare percentage instead.
+    """
+    raw = str(text or "")
+    match = re.search(r"([\d.]+)\s*/\s*([\d.]+)", raw)
+    if not match:
+        return percent_value(raw)
+    try:
+        used = float(match.group(1))
+        total = float(match.group(2))
+    except ValueError:
+        return None
+    if total <= 0:
+        return None
+    return int(round(used / total * 100))
+
+
 def health_color(percent: int | None, *, warn: int = 80, crit: int = 95) -> str:
     if percent is None:
         return MUTED

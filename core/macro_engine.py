@@ -13,7 +13,11 @@ class MacroEngine:
         self.current_macro: list[str] = []
 
     def load(self):
-        return load_json(self.filename, {})
+        # Guard against a corrupted file that parses to a non-dict (e.g. a
+        # JSON list): downstream code indexes self.macros as a dict, so a list
+        # would crash recording/lookup. Mirrors SessionManager/WorkspaceManager.
+        data = load_json(self.filename, {})
+        return data if isinstance(data, dict) else {}
 
     def save(self):
         try:

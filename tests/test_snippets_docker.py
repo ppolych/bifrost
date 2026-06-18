@@ -45,6 +45,23 @@ def test_snippet_variables_preserve_unknown_or_invalid_placeholders():
     assert expand_snippet("echo {", {}) == "echo {"
 
 
+def test_snippet_variables_preserve_braces_and_attribute_access():
+    from core.snippet_variables import expand_snippet
+
+    session = {"name": "srv", "host": "h"}
+    # Go-template double braces (e.g. Docker -f) must survive intact.
+    assert expand_snippet("docker inspect -f {{.State.Status}} web", session) == (
+        "docker inspect -f {{.State.Status}} web"
+    )
+    # Shell ${VAR} and awk '{...}' are not placeholders.
+    assert expand_snippet("echo ${HOME}", session) == "echo ${HOME}"
+    assert expand_snippet("awk '{print $1}'", session) == "awk '{print $1}'"
+    # Attribute-style access must not raise or leak Python reprs.
+    assert expand_snippet("cfg {missing.attr} {name.upper} end", session) == (
+        "cfg {missing.attr} {name.upper} end"
+    )
+
+
 def test_docker_action_rejects_unknown_action():
     import pytest
 

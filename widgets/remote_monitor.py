@@ -11,6 +11,7 @@ from core.remote_monitor_health import (
     freshness_text,
     health_color,
     is_stale,
+    mem_percent,
     percent_value,
 )
 from core.remote_monitor import (
@@ -254,7 +255,7 @@ class RemoteMonitorWidget(RemoteMonitorActionsMixin, QWidget):
 
     def _apply_health_colors(self, metrics: dict) -> None:
         self._set_cell_color(self.cpu_label, health_color(percent_value(metrics.get("cpu"))))
-        self._set_cell_color(self.mem_label, health_color(percent_value(metrics.get("mem"))))
+        self._set_cell_color(self.mem_label, health_color(mem_percent(metrics.get("mem"))))
         self._set_cell_color(self.disk_label, health_color(disk_worst_percent(metrics.get("disk"))))
 
     def _update_freshness(self) -> None:
