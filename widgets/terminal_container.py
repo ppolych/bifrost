@@ -54,14 +54,22 @@ class TerminalContainer(QWidget):
             self.main_splitter.setOrientation(Qt.Orientation.Vertical)
             h_splitter_top = QSplitter(Qt.Orientation.Horizontal)
             h_splitter_bottom = QSplitter(Qt.Orientation.Horizontal)
-            self.add_terminal(h_splitter_top)
+            first = self.add_terminal(h_splitter_top)
             self.add_terminal(h_splitter_top)
             self.add_terminal(h_splitter_bottom)
             self.add_terminal(h_splitter_bottom)
+            # Tear down the existing panes (including the original primary
+            # terminal) cleanly — deleteLater alone leaks their reader thread
+            # and backend, and leaves self.primary_terminal dangling.
             while self.main_splitter.count():
-                self.main_splitter.widget(0).deleteLater()
+                old = self.main_splitter.widget(0)
+                old.setParent(None)
+                if isinstance(old, TerminalWidget):
+                    old.shutdown()
+                old.deleteLater()
             self.main_splitter.addWidget(h_splitter_top)
             self.main_splitter.addWidget(h_splitter_bottom)
+            self.primary_terminal = first
         else:
             self.main_splitter.setOrientation(
                 Qt.Orientation.Vertical if orientation == "vert" else Qt.Orientation.Horizontal

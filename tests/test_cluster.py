@@ -137,6 +137,33 @@ def test_reconnect_preserves_cluster_membership(app, monkeypatch):
     assert container not in app.cluster_tabs
 
 
+def test_reconnect_preserves_pin_state(app, monkeypatch):
+    from widgets.terminal_container import TerminalContainer
+
+    class FakeBackend:
+        def start(self): pass
+        def read(self, size=4096): return b""
+        def write(self, data): pass
+        def set_winsize(self, rows, cols): pass
+        def close(self): pass
+
+    container = TerminalContainer(
+        "s", ["true"], ssh_session={"name": "s", "type": "SSH", "host": "h"}
+    )
+    app.tabs.addTab(container, "s")
+    idx = app.tabs.indexOf(container)
+    app.toggle_tab_pin(idx)
+    assert container in app.pinned_tabs
+
+    monkeypatch.setattr(app, "_build_ssh_backend", lambda name, session: FakeBackend())
+    app._reconnect_tab(idx)
+
+    replacement = app.tabs.widget(idx)
+    assert replacement is not container
+    assert replacement in app.pinned_tabs
+    assert container not in app.pinned_tabs
+
+
 def test_closing_tab_drops_cluster_membership(app, monkeypatch):
     app.new_terminal_tab("t2", command=["true"])
     container = app.tabs.widget(1)

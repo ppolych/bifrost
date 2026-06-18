@@ -162,10 +162,12 @@ class BifrostSshStatusMixin:
         if backend is not None:
             backend.close()
         old_text = self.tabs.tabText(tab_index)
-        # Carry cluster membership over to the replacement container (and drop
-        # the dead widget from the set so it doesn't linger there).
+        # Carry cluster + pin state over to the replacement container (and drop
+        # the dead widget from the sets so it doesn't linger there).
         was_clustered = widget in self.cluster_tabs
+        was_pinned = widget in self.pinned_tabs
         self.cluster_tabs.discard(widget)
+        self.pinned_tabs.discard(widget)
         self.tabs.removeTab(tab_index)
         widget.shutdown()
         widget.deleteLater()
@@ -183,6 +185,12 @@ class BifrostSshStatusMixin:
         self.tabs.setCurrentIndex(tab_index)
         if was_clustered:
             self.cluster_tabs.add(container)
+        if was_pinned:
+            self.pinned_tabs.add(container)
+            # Restore the hidden close button so the new tab still reads pinned.
+            self.tabs.tabBar().setTabButton(
+                tab_index, QTabBar.ButtonPosition.RightSide, QWidget()
+            )
         if self.multi_exec_enabled:
             self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
