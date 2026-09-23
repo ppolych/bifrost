@@ -6,6 +6,8 @@ class BifrostSshStatusMixin:
         # Keep the SSH browser pane in sync as tabs come and go.
         self._refresh_ssh_browser()
         if index < 0:
+            self.sidebar.sftp_widget.detach()
+            self.sidebar.hide_sftp_pane()
             self.remote_monitor.set_backend(None)
             self.sidebar.remote_ops_widget.set_backend(None)
             docker_widget = self.sidebar.docker_widget_if_loaded()
@@ -175,7 +177,7 @@ class BifrostSshStatusMixin:
             session.get("name") or widget.name,
             None,
             self.on_terminal_key,
-            settings=self.settings,
+            settings=self._settings_for_session(session),
             backend=new_backend,
             ssh_session=session,
         )
@@ -187,10 +189,7 @@ class BifrostSshStatusMixin:
             self.cluster_tabs.add(container)
         if was_pinned:
             self.pinned_tabs.add(container)
-            # Restore the hidden close button so the new tab still reads pinned.
-            self.tabs.tabBar().setTabButton(
-                tab_index, QTabBar.ButtonPosition.RightSide, QWidget()
-            )
+            self._set_tab_close_button_visible(tab_index, False)
         if self.multi_exec_enabled:
             self._refresh_multi_exec_ui()
         self._refresh_ssh_browser()
@@ -241,6 +240,11 @@ class BifrostSshStatusMixin:
 
     def _attach_sftp_when_ready(self, backend: ParamikoBackend):
         """Poll until the SSH connection is ready, then attach the SFTP browser."""
+        # Remove the previous host's files before waiting for the new host.
+        # Otherwise uploads/deletes still target the old connection while the
+        # active terminal is connecting or has failed to connect.
+        if self.sidebar.sftp_widget.is_attached():
+            self.sidebar.sftp_widget.detach()
         if backend.wait_ready(timeout=0):
             self._refresh_ssh_browser()
             if backend.connect_error is not None:

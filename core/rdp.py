@@ -25,6 +25,8 @@ def normalize_rdp_port(value) -> int:
 
 def rdp_target(host: str, port) -> str:
     clean_host = (host or "localhost").strip() or "localhost"
+    if ":" in clean_host and not clean_host.startswith("["):
+        clean_host = f"[{clean_host}]"
     return f"{clean_host}:{normalize_rdp_port(port)}"
 
 

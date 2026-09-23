@@ -215,7 +215,7 @@ class BifrostSessionsMixin:
             user, _, host_port = text.partition("@")
             if not host_port:
                 host_port, user = user, ""
-            host, _, port = host_port.partition(":")
+            host, port = split_host_port(host_port)
             default_user = self.settings.get("ssh_default_user", "") or ""
             default_port = int(self.settings.get("ssh_default_port", 22) or 22)
             session = {
@@ -229,7 +229,7 @@ class BifrostSessionsMixin:
             display = f"{display_user}@{host}" if display_user else host
             self.new_terminal_tab(display or text, ssh_session=session)
         elif method == "Telnet":
-            host, _, port = text.partition(":")
+            host, port = split_host_port(text)
             self.new_terminal_tab(
                 text or "telnet",
                 kind="Telnet",
@@ -237,14 +237,14 @@ class BifrostSessionsMixin:
                 port=int(port) if port.isdigit() else 23,
             )
         elif method == "VNC":
-            host, _, port = text.partition(":")
+            host, port = split_host_port(text)
             self.open_vnc_session({
                 "name": text,
                 "host": host or "localhost",
                 "port": port if port.isdigit() else 5900,
             })
         elif method == "RDP":
-            host, _, port = text.partition(":")
+            host, port = split_host_port(text)
             self.open_rdp_session({
                 "name": text,
                 "type": "RDP",

@@ -73,7 +73,16 @@ class TerminalBackend:
         if self._closed:
             return b""
         if not IS_WINDOWS:
-            return os.read(self.fd, size)
+            import select
+            # Closing a descriptor from another thread does not reliably wake
+            # a blocking PTY read. Poll so shutdown can always stop the reader.
+            while not self._closed:
+                readable, _, _ = select.select([self.fd], [], [], 0.1)
+                if self._closed:
+                    return b""
+                if readable:
+                    return os.read(self.fd, size)
+            return b""
         try:
             chunk = self._winpty.read(size)
         except EOFError:

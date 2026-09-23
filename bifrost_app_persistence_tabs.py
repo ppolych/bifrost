@@ -84,17 +84,7 @@ class BifrostPersistenceTabsMixin:
                 return
             self.sidebar.refresh_sessions()
             self._refresh_credentials_view()
-            if data["type"] == "WSL":
-                self.new_terminal_tab(
-                    data["name"],
-                    kind="WSL",
-                    distro=data.get("distro") or None,
-                    session_data=data,
-                )
-            elif data["type"] == "SSH":
-                self.new_terminal_tab(data["name"], ssh_session=data)
-            else:
-                self.new_terminal_tab(data["name"], session_data=data)
+            self.on_session_activated(data)
 
     def edit_session(self, parent_path: list, session: dict, section: str = "connection"):
         dialog = SessionDialog(self, session=session)

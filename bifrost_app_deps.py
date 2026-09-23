@@ -15,6 +15,7 @@ import sys
 import psutil
 import paramiko
 import pyte
+from core.connection_targets import split_host_port, target_with_port
 from PyQt6.QtCore import QT_VERSION_STR, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
@@ -99,13 +100,13 @@ def parse_quick_connect_command(method: str, text: str) -> tuple[str, str]:
             if not arg.startswith("-") and not host:
                 host = arg
             i += 1
-        if host and port and ":" not in host:
-            host = f"{host}:{port}"
+        if host and port:
+            host = target_with_port(host, port)
         return "SSH", host
     if command in {"telnet", "rdp"}:
         target = args[0] if args else ""
-        if len(args) > 1 and args[1].isdigit() and ":" not in target:
-            target = f"{target}:{args[1]}"
+        if len(args) > 1 and args[1].isdigit():
+            target = target_with_port(target, args[1])
         return command.upper() if command == "rdp" else "Telnet", target
     if command == "vnc":
         return "VNC", args[0] if args else ""

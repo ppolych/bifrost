@@ -17,10 +17,10 @@ class BifrostTerminalSessionsMixin:
         baud=None,
     ):
         backend = None
-        session = None
+        session = session_data if isinstance(session_data, dict) else None
         prefix = "🐚 "
 
-        if kind == "WSL" or (kind is None and "WSL" in name):
+        if kind == "WSL":
             command = wsl.spawn_command(distro)
             prefix = "🐧 "
         elif kind == "Telnet":
@@ -37,8 +37,6 @@ class BifrostTerminalSessionsMixin:
             if session is None:
                 session = self._session_from_backend(name, backend)
             prefix = "🌐 "
-        elif isinstance(session_data, dict):
-            session = session_data
 
         if name != "Local Shell":
             self.session_manager.add_to_recents(name)
@@ -50,7 +48,7 @@ class BifrostTerminalSessionsMixin:
             self.on_terminal_key,
             settings=tab_settings,
             backend=backend,
-            ssh_session=session if backend is not None else None,
+            ssh_session=session if ssh_session is not None or is_ssh else None,
         )
         container.source_session_id = id(session) if isinstance(session, dict) else None
         container.detach_requested.connect(self.detach_terminal)

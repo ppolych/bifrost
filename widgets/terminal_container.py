@@ -66,6 +66,9 @@ class TerminalContainer(QWidget):
                 old.setParent(None)
                 if isinstance(old, TerminalWidget):
                     old.shutdown()
+                else:
+                    for term in old.findChildren(TerminalWidget):
+                        term.shutdown()
                 old.deleteLater()
             self.main_splitter.addWidget(h_splitter_top)
             self.main_splitter.addWidget(h_splitter_bottom)

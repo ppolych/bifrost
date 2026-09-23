@@ -1,4 +1,5 @@
 from bifrost_app_deps import *
+from PyQt6.QtWidgets import QStyle
 
 
 class BifrostTabsMixin:
@@ -130,23 +131,30 @@ class BifrostTabsMixin:
         # Track the *widget*, not the index: indexes shift when other tabs
         # close or reorder, which would desync the close guard (mirrors how
         # cluster_tabs holds container objects).
-        # Qt's enum is QTabBar.ButtonPosition (QTabWidget has no TabButton).
-        # On the close-button side: None restores the standard close button;
-        # an empty widget effectively hides it (pinned).
         widget = self.tabs.widget(index)
         if widget is None:
             return
         if widget in self.pinned_tabs:
             self.pinned_tabs.discard(widget)
-            self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, None)
             pinned = False
         else:
             self.pinned_tabs.add(widget)
-            self.tabs.tabBar().setTabButton(index, QTabBar.ButtonPosition.RightSide, QWidget())
             pinned = True
+        self._set_tab_close_button_visible(index, not pinned)
         self.status_bar.showMessage(
             f"Tab {self.tabs.tabText(index)} {'pinned' if pinned else 'unpinned'}", 4000
         )
+
+    def _set_tab_close_button_visible(self, index, visible):
+        # Keep Qt's button and its signal connection: setTabButton(None)
+        # removes it rather than recreating a standard close button.
+        bar = self.tabs.tabBar()
+        side = QTabBar.ButtonPosition(
+            bar.style().styleHint(QStyle.StyleHint.SH_TabBar_CloseButtonPosition)
+        )
+        button = bar.tabButton(index, side)
+        if button is not None:
+            button.setVisible(visible)
 
     def rename_tab(self, index):
         new_name, ok = QInputDialog.getText(self, "Rename Tab", "New name:", QLineEdit.EchoMode.Normal, self.tabs.tabText(index))
